@@ -70,12 +70,16 @@ const VLRPED_POR_NOTA = `
   )
 `;
 
-/** JOINs padrão do BI antigo: nota → parceiro → cidade → UF (inner). */
+/**
+ * JOINs padrão do BI antigo: nota → parceiro → cidade → UF (inner).
+ * Alias `EST` (e não `UF`) para evitar a colisão `UF.UF` (alias = coluna),
+ * que quebrava o pré-processador SQL do Sankhya na consulta por UF.
+ */
 const GER_JOINS_UF = `
   LEFT JOIN ${VLRPED_POR_NOTA} X ON X.NUNOTA = CAB.NUNOTA
   INNER JOIN TGFPAR PAR ON PAR.CODPARC = CAB.CODPARC
   INNER JOIN TSICID CID ON CID.CODCID = PAR.CODCID
-  INNER JOIN TSIUFS UF ON UF.CODUF = CID.UF
+  INNER JOIN TSIUFS EST ON EST.CODUF = CID.UF
 `;
 
 /** Lista de representantes ativos para o seletor. */
@@ -317,12 +321,12 @@ export function comparativoUF(
 ): Query {
   return {
     sql: `
-      SELECT UF.UF AS ROTULO,${SELECT_COMPARATIVO}
+      SELECT EST.UF AS ROTULO,${SELECT_COMPARATIVO}
       FROM TGFCAB CAB
       ${GER_JOINS_UF}
       ${WHERE_COMPARATIVO}
         ${filtroMeses(meses, "CAB.DTMOV")}
-      GROUP BY UF.UF
+      GROUP BY EST.UF
       ORDER BY VEND_ATU DESC
     `,
     params: paramsComparativo(anoAtual, anoAnterior),
@@ -427,7 +431,7 @@ export function registrosDetalhe(
   }
 
   if (ctx.uf) {
-    where += " AND UF.UF = ?";
+    where += " AND EST.UF = ?";
     params.push({ value: ctx.uf, type: "S" });
   }
   if (ctx.codvend != null) {
@@ -449,9 +453,9 @@ export function registrosDetalhe(
     : "";
   const geoJoins = ger
     ? `INNER JOIN TSICID CID ON CID.CODCID = PAR.CODCID
-       INNER JOIN TSIUFS UF ON UF.CODUF = CID.UF`
+       INNER JOIN TSIUFS EST ON EST.CODUF = CID.UF`
     : `LEFT JOIN TSICID CID ON CID.CODCID = PAR.CODCID
-       LEFT JOIN TSIUFS UF ON UF.CODUF = CID.UF`;
+       LEFT JOIN TSIUFS EST ON EST.CODUF = CID.UF`;
 
   return {
     sql: `
@@ -459,7 +463,7 @@ export function registrosDetalhe(
              CONVERT(VARCHAR(10), ${dataCol}, 120) AS DATA,
              RTRIM(PAR.NOMEPARC) AS CLIENTE,
              RTRIM(VEN.APELIDO) AS VENDEDOR,
-             UF.UF AS UF,
+             EST.UF AS UF,
              ${valorCol} AS VALOR
       FROM TGFCAB CAB
       ${vlrpedJoin}

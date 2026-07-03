@@ -154,16 +154,6 @@ const NADA_PRONTO: ProntoGerencial = {
   mensal: false,
 };
 
-const TUDO_PRONTO: ProntoGerencial = {
-  ontem: true,
-  hoje: true,
-  mes: true,
-  ano: true,
-  uf: true,
-  representantes: true,
-  mensal: true,
-};
-
 /**
  * Todos os conjuntos da visão gerencial (tela inicial).
  *
@@ -192,48 +182,57 @@ export function useGerencial(
     setData(GERENCIAL_VAZIO);
     setPronto(NADA_PRONTO);
 
-    const tarefas: [SecaoGerencial, Promise<SnapshotAno[] | LinhaComparativa[]>][] =
+    // Thunks (não disparam sozinhos): mais leves primeiro, pesados no fim.
+    const tarefas: [
+      SecaoGerencial,
+      () => Promise<SnapshotAno[] | LinhaComparativa[]>
+    ][] = [
+      ["ontem", () => getSnapshotAno("ontem")],
+      ["hoje", () => getSnapshotAno("hoje")],
+      ["mes", () => getSnapshotAno("mes")],
+      ["ano", () => getSnapshotAno("ano", meses)],
+      ["uf", () => getComparativoUF(anoAtual, anoAnterior, meses)],
       [
-        ["ontem", getSnapshotAno("ontem")],
-        ["hoje", getSnapshotAno("hoje")],
-        ["mes", getSnapshotAno("mes")],
-        ["ano", getSnapshotAno("ano", meses)],
-        ["uf", getComparativoUF(anoAtual, anoAnterior, meses)],
-        [
-          "representantes",
-          getComparativoRepresentantesGerencial(anoAtual, anoAnterior, meses),
-        ],
-        ["mensal", getComparativoMensal(anoAtual, anoAnterior, meses)],
-      ];
+        "representantes",
+        () => getComparativoRepresentantesGerencial(anoAtual, anoAnterior, meses),
+      ],
+      ["mensal", () => getComparativoMensal(anoAtual, anoAnterior, meses)],
+    ];
 
-    let pendentes = tarefas.length;
+    // Consultas pesadas (subquery do VLRPED): limita a concorrência para não
+    // sobrecarregar o Sankhya (7 simultâneas causavam timeouts/erros).
+    const CONCORRENCIA = 2;
+    let proxima = 0;
     let sucessos = 0;
     let ultimoErro: unknown = null;
 
-    for (const [secao, promessa] of tarefas) {
-      promessa
-        .then((resultado) => {
+    async function worker() {
+      while (!cancelado && proxima < tarefas.length) {
+        const [secao, fn] = tarefas[proxima++];
+        try {
+          const resultado = await fn();
           if (cancelado) return;
           sucessos += 1;
           setData((atual) => ({ ...atual, [secao]: resultado }));
-          setPronto((atual) => ({ ...atual, [secao]: true }));
-        })
-        .catch((e) => {
+        } catch (e) {
           ultimoErro = e;
           console.error(`[useGerencial] falha ao carregar "${secao}":`, e);
-        })
-        .finally(() => {
-          if (cancelado) return;
-          pendentes -= 1;
-          if (pendentes === 0) {
-            setLoading(false);
-            // Evita cards presos em skeleton eterno: seções que falharam
-            // ficam "prontas" (vazias). Só há erro global se tudo falhou.
-            setPronto(TUDO_PRONTO);
-            if (sucessos === 0) setError(mensagemErro(ultimoErro));
-          }
-        });
+        } finally {
+          // Mostra o card (dados ou "sem dados") em vez de skeleton eterno.
+          if (!cancelado) setPronto((atual) => ({ ...atual, [secao]: true }));
+        }
+      }
     }
+
+    const pool = Array.from(
+      { length: Math.min(CONCORRENCIA, tarefas.length) },
+      () => worker()
+    );
+    Promise.all(pool).finally(() => {
+      if (cancelado) return;
+      setLoading(false);
+      if (sucessos === 0) setError(mensagemErro(ultimoErro));
+    });
 
     return () => {
       cancelado = true;
