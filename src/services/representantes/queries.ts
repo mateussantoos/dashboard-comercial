@@ -23,12 +23,12 @@ function baseParams(tipmov: TipMov, codvend: number): SankhyaQueryParam[] {
 }
 
 /**
- * Filtro opcional de meses (`MONTH(DTNEG) IN (...)`).
+ * Filtro opcional de meses (`MONTH(<coluna>) IN (...)`).
  * - `undefined` ou 12 meses = sem filtro (todos os meses).
  * - `[]` (nenhum mês selecionado) = não retorna nada (`AND 1 = 0`).
  * Os números são validados como inteiros e interpolados com segurança.
  */
-function filtroMeses(meses?: number[]): string {
+function filtroMeses(meses?: number[], coluna = "CAB.DTNEG"): string {
   if (!meses || meses.length >= 12) return "";
   if (meses.length === 0) return "AND 1 = 0";
   const lista = meses
@@ -36,8 +36,47 @@ function filtroMeses(meses?: number[]): string {
     .filter((m) => m >= 1 && m <= 12);
   if (!lista.length) return "AND 1 = 0";
   if (lista.length >= 12) return "";
-  return `AND MONTH(CAB.DTNEG) IN (${lista.join(", ")})`;
+  return `AND MONTH(${coluna}) IN (${lista.join(", ")})`;
 }
+
+// --- Base de cálculo da Visão Gerencial (espelha o BI antigo) ---
+// O relatório antigo somava VLRPED (valor do pedido, com multiplicador por
+// tabela de preço) filtrando por CODTIPOPER e DTMOV. Reproduzimos a mesma
+// regra sem depender de views.
+
+/** Tipos de operação considerados "venda" na visão gerencial. */
+const GER_TOPS = "CAB.CODTIPOPER IN (3100, 888)";
+
+/**
+ * VLRPED por nota — lógica inlinada da antiga VIEW_TABX (para não depender de
+ * view): soma de `(QTDNEG * VLRUNIT) - VLRDESC` dos itens, com multiplicador
+ * conforme o nome da tabela de preço da nota.
+ */
+const VLRPED_POR_NOTA = `
+  (
+    SELECT CAB.NUNOTA AS NUNOTA,
+           CASE
+             WHEN NTA.NOMETAB LIKE '%X%' THEN SUM((ITE.QTDNEG * ITE.VLRUNIT) - ITE.VLRDESC) * 2
+             WHEN NTA.NOMETAB LIKE '%IMPORTEC%' THEN SUM((ITE.QTDNEG * ITE.VLRUNIT) - ITE.VLRDESC) * 2
+             WHEN NTA.NOMETAB LIKE '%Y%' THEN SUM((ITE.QTDNEG * ITE.VLRUNIT) - ITE.VLRDESC) / 0.75
+             ELSE SUM((ITE.QTDNEG * ITE.VLRUNIT) - ITE.VLRDESC)
+           END AS VLRPED
+    FROM TGFCAB CAB
+    LEFT JOIN TGFITE ITE ON ITE.NUNOTA = CAB.NUNOTA
+    LEFT JOIN TGFTAB TAB ON TAB.NUTAB = (SELECT MAX(NUTAB) FROM TGFITE I2 WHERE I2.NUNOTA = CAB.NUNOTA)
+    LEFT JOIN TGFNTA NTA ON NTA.CODTAB = TAB.CODTAB
+    WHERE CAB.CODTIPOPER IN (3100, 888)
+    GROUP BY CAB.NUNOTA, NTA.NOMETAB
+  )
+`;
+
+/** JOINs padrão do BI antigo: nota → parceiro → cidade → UF (inner). */
+const GER_JOINS_UF = `
+  LEFT JOIN ${VLRPED_POR_NOTA} X ON X.NUNOTA = CAB.NUNOTA
+  INNER JOIN TGFPAR PAR ON PAR.CODPARC = CAB.CODPARC
+  INNER JOIN TSICID CID ON CID.CODCID = PAR.CODCID
+  INNER JOIN TSIUFS UF ON UF.CODUF = CID.UF
+`;
 
 /** Lista de representantes ativos para o seletor. */
 export function listRepresentantes(): Query {
@@ -205,40 +244,40 @@ export function comparativoRepresentantes(
   };
 }
 
-// --- Visão gerencial (tela inicial) ---
+// --- Visão gerencial (tela inicial) — espelha o BI antigo ---
 
-/** Filtro de período (sobre DTNEG) para o recorte por ano. */
+/** Filtro de período (sobre DTMOV) para o recorte por ano. */
 function filtroPeriodo(periodo: PeriodoSnapshot): string {
   switch (periodo) {
     case "hoje":
-      return "AND DAY(CAB.DTNEG) = DAY(GETDATE()) AND MONTH(CAB.DTNEG) = MONTH(GETDATE())";
+      return "AND DAY(CAB.DTMOV) = DAY(GETDATE()) AND MONTH(CAB.DTMOV) = MONTH(GETDATE())";
     case "ontem":
-      return "AND DAY(CAB.DTNEG) = DAY(DATEADD(DAY, -1, GETDATE())) AND MONTH(CAB.DTNEG) = MONTH(DATEADD(DAY, -1, GETDATE()))";
+      return "AND DAY(CAB.DTMOV) = DAY(DATEADD(DAY, -1, GETDATE())) AND MONTH(CAB.DTMOV) = MONTH(DATEADD(DAY, -1, GETDATE()))";
     case "mes":
-      return "AND MONTH(CAB.DTNEG) = MONTH(GETDATE())";
+      return "AND MONTH(CAB.DTMOV) = MONTH(GETDATE())";
     default:
       return "";
   }
 }
 
-/** Faturamento e nº de notas por ano, recortado por período (Ontem/Hoje/Mês/Ano). */
+/** Vendas (VLRPED) e nº de notas por ano, recortado por período. */
 export function snapshotPorAno(
   periodo: PeriodoSnapshot,
   meses?: number[]
 ): Query {
   // O filtro de meses só faz sentido no recorte anual.
-  const mesesSql = periodo === "ano" ? filtroMeses(meses) : "";
+  const mesesSql = periodo === "ano" ? filtroMeses(meses, "CAB.DTMOV") : "";
   return {
     sql: `
-      SELECT YEAR(CAB.DTNEG) AS ANO,
-             SUM(CAB.VLRNOTA) AS VENDAS,
+      SELECT YEAR(CAB.DTMOV) AS ANO,
+             SUM(X.VLRPED) AS VENDAS,
              COUNT(CAB.NUNOTA) AS PEDIDOS
       FROM TGFCAB CAB
-      WHERE CAB.TIPMOV = 'V'
-        AND CAB.STATUSNOTA = 'L'
+      ${GER_JOINS_UF}
+      WHERE ${GER_TOPS}
         ${filtroPeriodo(periodo)}
         ${mesesSql}
-      GROUP BY YEAR(CAB.DTNEG)
+      GROUP BY YEAR(CAB.DTMOV)
       ORDER BY ANO DESC
     `,
     params: [],
@@ -261,15 +300,14 @@ function paramsComparativo(
 }
 
 const SELECT_COMPARATIVO = `
-  SUM(CASE WHEN YEAR(CAB.DTNEG) = ? THEN CAB.VLRNOTA ELSE 0 END) AS VEND_ANT,
-  COUNT(CASE WHEN YEAR(CAB.DTNEG) = ? THEN CAB.NUNOTA END) AS PED_ANT,
-  SUM(CASE WHEN YEAR(CAB.DTNEG) = ? THEN CAB.VLRNOTA ELSE 0 END) AS VEND_ATU,
-  COUNT(CASE WHEN YEAR(CAB.DTNEG) = ? THEN CAB.NUNOTA END) AS PED_ATU`;
+  SUM(CASE WHEN YEAR(CAB.DTMOV) = ? THEN X.VLRPED ELSE 0 END) AS VEND_ANT,
+  COUNT(CASE WHEN YEAR(CAB.DTMOV) = ? THEN CAB.NUNOTA END) AS PED_ANT,
+  SUM(CASE WHEN YEAR(CAB.DTMOV) = ? THEN X.VLRPED ELSE 0 END) AS VEND_ATU,
+  COUNT(CASE WHEN YEAR(CAB.DTMOV) = ? THEN CAB.NUNOTA END) AS PED_ATU`;
 
 const WHERE_COMPARATIVO = `
-  WHERE CAB.TIPMOV = 'V'
-    AND CAB.STATUSNOTA = 'L'
-    AND YEAR(CAB.DTNEG) IN (?, ?)`;
+  WHERE ${GER_TOPS}
+    AND YEAR(CAB.DTMOV) IN (?, ?)`;
 
 /** Comparativo de vendas por UF (ano anterior × atual). */
 export function comparativoUF(
@@ -281,11 +319,9 @@ export function comparativoUF(
     sql: `
       SELECT UF.UF AS ROTULO,${SELECT_COMPARATIVO}
       FROM TGFCAB CAB
-      INNER JOIN TGFPAR PAR ON PAR.CODPARC = CAB.CODPARC
-      INNER JOIN TSICID CID ON CID.CODCID = PAR.CODCID
-      INNER JOIN TSIUFS UF ON UF.CODUF = CID.UF
+      ${GER_JOINS_UF}
       ${WHERE_COMPARATIVO}
-        ${filtroMeses(meses)}
+        ${filtroMeses(meses, "CAB.DTMOV")}
       GROUP BY UF.UF
       ORDER BY VEND_ATU DESC
     `,
@@ -304,9 +340,10 @@ export function comparativoRepresentantesGerencial(
       SELECT RTRIM(VEN.APELIDO) AS ROTULO,
              VEN.CODVEND AS CODIGO,${SELECT_COMPARATIVO}
       FROM TGFCAB CAB
+      ${GER_JOINS_UF}
       INNER JOIN TGFVEN VEN ON VEN.CODVEND = CAB.CODVEND
       ${WHERE_COMPARATIVO}
-        ${filtroMeses(meses)}
+        ${filtroMeses(meses, "CAB.DTMOV")}
       GROUP BY VEN.CODVEND, VEN.APELIDO
       ORDER BY VEND_ATU DESC
     `,
@@ -322,11 +359,12 @@ export function comparativoMensal(
 ): Query {
   return {
     sql: `
-      SELECT MONTH(CAB.DTNEG) AS MES,${SELECT_COMPARATIVO}
+      SELECT MONTH(CAB.DTMOV) AS MES,${SELECT_COMPARATIVO}
       FROM TGFCAB CAB
+      ${GER_JOINS_UF}
       ${WHERE_COMPARATIVO}
-        ${filtroMeses(meses)}
-      GROUP BY MONTH(CAB.DTNEG)
+        ${filtroMeses(meses, "CAB.DTMOV")}
+      GROUP BY MONTH(CAB.DTMOV)
       ORDER BY MES
     `,
     params: paramsComparativo(anoAtual, anoAnterior),
@@ -349,19 +387,31 @@ export function registrosDetalhe(
 ): Query {
   const off = Math.max(0, Math.trunc(offset));
   const lim = Math.max(1, Math.trunc(limite));
+
+  // Modo gerencial: mesma base do BI antigo (CODTIPOPER/DTMOV/VLRPED) para o
+  // detalhamento bater com o valor agregado do card.
+  const ger = !!ctx.gerencial;
+  const dataCol = ger ? "CAB.DTMOV" : "CAB.DTNEG";
+  const valorCol = ger ? "X.VLRPED" : "CAB.VLRNOTA";
+
   const params: SankhyaQueryParam[] = [];
-  let where = "CAB.TIPMOV = ? AND CAB.STATUSNOTA = 'L'";
-  params.push({ value: ctx.tipmov, type: "S" });
+  let where: string;
+  if (ger) {
+    where = GER_TOPS;
+  } else {
+    where = "CAB.TIPMOV = ? AND CAB.STATUSNOTA = 'L'";
+    params.push({ value: ctx.tipmov, type: "S" });
+  }
 
   if (ctx.ano != null) {
-    where += " AND YEAR(CAB.DTNEG) = ?";
+    where += ` AND YEAR(${dataCol}) = ?`;
     params.push({ value: ctx.ano, type: "I" });
   } else if (
     !ctx.todosAnos &&
     ctx.anoAtual != null &&
     ctx.anoAnterior != null
   ) {
-    where += " AND YEAR(CAB.DTNEG) IN (?, ?)";
+    where += ` AND YEAR(${dataCol}) IN (?, ?)`;
     params.push(
       { value: ctx.anoAtual, type: "I" },
       { value: ctx.anoAnterior, type: "I" }
@@ -369,10 +419,10 @@ export function registrosDetalhe(
   }
 
   if (ctx.mes != null) {
-    where += " AND MONTH(CAB.DTNEG) = ?";
+    where += ` AND MONTH(${dataCol}) = ?`;
     params.push({ value: ctx.mes, type: "I" });
   } else {
-    const fm = filtroMeses(ctx.meses);
+    const fm = filtroMeses(ctx.meses, dataCol);
     if (fm) where += ` ${fm}`;
   }
 
@@ -394,21 +444,30 @@ export function registrosDetalhe(
     params.push({ value: ctx.codprod, type: "I" });
   }
 
+  const vlrpedJoin = ger
+    ? `LEFT JOIN ${VLRPED_POR_NOTA} X ON X.NUNOTA = CAB.NUNOTA`
+    : "";
+  const geoJoins = ger
+    ? `INNER JOIN TSICID CID ON CID.CODCID = PAR.CODCID
+       INNER JOIN TSIUFS UF ON UF.CODUF = CID.UF`
+    : `LEFT JOIN TSICID CID ON CID.CODCID = PAR.CODCID
+       LEFT JOIN TSIUFS UF ON UF.CODUF = CID.UF`;
+
   return {
     sql: `
       SELECT CAB.NUNOTA AS NUNOTA,
-             CONVERT(VARCHAR(10), CAB.DTNEG, 120) AS DATA,
+             CONVERT(VARCHAR(10), ${dataCol}, 120) AS DATA,
              RTRIM(PAR.NOMEPARC) AS CLIENTE,
              RTRIM(VEN.APELIDO) AS VENDEDOR,
              UF.UF AS UF,
-             CAB.VLRNOTA AS VALOR
+             ${valorCol} AS VALOR
       FROM TGFCAB CAB
+      ${vlrpedJoin}
       INNER JOIN TGFPAR PAR ON PAR.CODPARC = CAB.CODPARC
       LEFT JOIN TGFVEN VEN ON VEN.CODVEND = CAB.CODVEND
-      LEFT JOIN TSICID CID ON CID.CODCID = PAR.CODCID
-      LEFT JOIN TSIUFS UF ON UF.CODUF = CID.UF
+      ${geoJoins}
       WHERE ${where}
-      ORDER BY CAB.DTNEG DESC
+      ORDER BY ${dataCol} DESC
       OFFSET ${off} ROWS FETCH NEXT ${lim} ROWS ONLY
     `,
     params,

@@ -135,8 +135,14 @@ export function TelaGerencial({
   const serieComp = serieComparativo(anoAtual, anoAnterior);
 
   const subtituloAnos = `${anoAnterior} × ${anoAtual}`;
-  // Drill sempre sobre faturamento (a visão gerencial usa TIPMOV='V').
-  const baseCtx = { tipmov: "V" as const, meses, anoAtual, anoAnterior };
+  // Drill usa a mesma base do BI antigo (CODTIPOPER/DTMOV/VLRPED).
+  const baseCtx = {
+    tipmov: "V" as const,
+    meses,
+    anoAtual,
+    anoAnterior,
+    gerencial: true,
+  };
 
   const colsUF = colunasComparativo(anoAtual, anoAnterior, {
     rotuloLabel: "UF",

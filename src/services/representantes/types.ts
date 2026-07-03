@@ -133,4 +133,9 @@ export interface DrillContexto {
   codprod?: number;
   /** Ignora o filtro de anos (usa todo o histórico). */
   todosAnos?: boolean;
+  /**
+   * Usa a base de cálculo da Visão Gerencial (CODTIPOPER/DTMOV/VLRPED) em vez
+   * de TIPMOV/DTNEG/VLRNOTA, para o detalhamento bater com o card.
+   */
+  gerencial?: boolean;
 }
