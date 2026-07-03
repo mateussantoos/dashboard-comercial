@@ -347,6 +347,7 @@ export function mockSnapshotAno(
     return {
       ...l,
       pctVend: anterior ? pct(l.vendas, anterior.vendas) : null,
+      pctQtd: anterior ? pct(l.pedidos, anterior.pedidos) : null,
     };
   });
 }
@@ -382,15 +383,20 @@ export function mockComparativoUF(
     const frac = pesos[i] / soma;
     const vendAtu = Math.round(vAtu * frac);
     const vendAnt = Math.round(vAnt * frac * (0.85 + rand() * 0.4));
+    const pedAnt = Math.max(0, Math.round(vendAnt / 1800));
+    const pedAtu = Math.max(0, Math.round(vendAtu / 1800));
     return {
       rotulo: uf,
       vendAnt,
-      pedAnt: Math.max(0, Math.round(vendAnt / 1800)),
+      pedAnt,
       vendAtu,
-      pedAtu: Math.max(0, Math.round(vendAtu / 1800)),
+      pedAtu,
       pctVend: pct(vendAtu, vendAnt),
+      pctPed: pct(pedAtu, pedAnt),
     };
-  }).sort((a, b) => b.vendAtu - a.vendAtu);
+  })
+    .sort((a, b) => b.vendAtu - a.vendAtu)
+    .map((l, i) => ({ ...l, rk: i + 1 }));
 }
 
 export function mockComparativoRepresentantes(
@@ -404,18 +410,22 @@ export function mockComparativoRepresentantes(
     const ant = anos.find((a) => a.ano === anoAnterior);
     const vendAtu = atu?.total ?? 0;
     const vendAnt = ant?.total ?? 0;
+    const pedAnt = ant?.qtd ?? 0;
+    const pedAtu = atu?.qtd ?? 0;
     return {
       rotulo: rep.nome,
       codigo: rep.codvend,
       vendAnt,
-      pedAnt: ant?.qtd ?? 0,
+      pedAnt,
       vendAtu,
-      pedAtu: atu?.qtd ?? 0,
+      pedAtu,
       pctVend: pct(vendAtu, vendAnt),
+      pctPed: pct(pedAtu, pedAnt),
     };
   })
     .filter((l) => l.vendAnt + l.vendAtu > 0)
-    .sort((a, b) => b.vendAtu - a.vendAtu);
+    .sort((a, b) => b.vendAtu - a.vendAtu)
+    .map((l, i) => ({ ...l, rk: i + 1 }));
 }
 
 export function mockComparativoMensal(
@@ -432,14 +442,17 @@ export function mockComparativoMensal(
       const ant = mensal.find((l) => l.ano === anoAnterior && l.mes === mes);
       const vendAtu = atu?.total ?? 0;
       const vendAnt = ant?.total ?? 0;
+      const pedAnt = ant?.qtd ?? 0;
+      const pedAtu = atu?.qtd ?? 0;
       return {
         rotulo: MESES_NOMES[mes],
         ordem: mes,
         vendAnt,
-        pedAnt: ant?.qtd ?? 0,
+        pedAnt,
         vendAtu,
-        pedAtu: atu?.qtd ?? 0,
+        pedAtu,
         pctVend: pct(vendAtu, vendAnt),
+        pctPed: pct(pedAtu, pedAnt),
       };
     });
 }

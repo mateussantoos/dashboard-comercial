@@ -67,6 +67,8 @@ export interface SnapshotAno {
   pedidos: number;
   /** Variação % de vendas sobre o ano anterior. */
   pctVend: number | null;
+  /** Variação % da quantidade de pedidos sobre o ano anterior. */
+  pctQtd: number | null;
 }
 
 /**
@@ -79,12 +81,16 @@ export interface LinhaComparativa {
   codigo?: number;
   /** Ordem de exibição (ex.: número do mês). */
   ordem?: number;
+  /** Posição no ranking por valor (1 = maior). Só UF e Representantes. */
+  rk?: number;
   vendAnt: number;
   pedAnt: number;
   vendAtu: number;
   pedAtu: number;
   /** Variação % de vendas (atual sobre anterior). */
   pctVend: number | null;
+  /** Variação % da quantidade de pedidos (atual sobre anterior). */
+  pctPed: number | null;
 }
 
 /** Anos base do comparativo gerencial. */

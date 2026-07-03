@@ -111,3 +111,16 @@
     min-height: 100vh;
   }
 }
+
+/* Densidade compacta das tabelas (toggle na Visão Gerencial): mais linhas
+   visíveis, aproximando-se da BI antiga. */
+[data-density="compacto"] [data-slot="table-cell"] {
+  padding-top: 0.2rem;
+  padding-bottom: 0.2rem;
+}
+[data-density="compacto"] [data-slot="table-head"] {
+  height: 1.85rem;
+}
+[data-density="compacto"] [data-slot="table"] {
+  font-size: 0.8125rem;
+}

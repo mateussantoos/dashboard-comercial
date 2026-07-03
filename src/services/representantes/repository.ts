@@ -215,10 +215,14 @@ export async function getSnapshotAno(
     }))
     .sort((a, b) => b.ano - a.ano);
 
-  return linhas.map((l, i) => ({
-    ...l,
-    pctVend: linhas[i + 1] ? pct(l.vendas, linhas[i + 1].vendas) : null,
-  }));
+  return linhas.map((l, i) => {
+    const anterior = linhas[i + 1];
+    return {
+      ...l,
+      pctVend: anterior ? pct(l.vendas, anterior.vendas) : null,
+      pctQtd: anterior ? pct(l.pedidos, anterior.pedidos) : null,
+    };
+  });
 }
 
 function mapComparativa(
@@ -228,15 +232,23 @@ function mapComparativa(
 ): LinhaComparativa {
   const vendAnt = toNumber(r.VEND_ANT);
   const vendAtu = toNumber(r.VEND_ATU);
+  const pedAnt = toNumber(r.PED_ANT);
+  const pedAtu = toNumber(r.PED_ATU);
   return {
     rotulo,
     vendAnt,
-    pedAnt: toNumber(r.PED_ANT),
+    pedAnt,
     vendAtu,
-    pedAtu: toNumber(r.PED_ATU),
+    pedAtu,
     pctVend: pct(vendAtu, vendAnt),
+    pctPed: pct(pedAtu, pedAnt),
     ...extra,
   };
+}
+
+/** Numera as linhas (já ordenadas por valor) com sua posição no ranking. */
+function comRanking(linhas: LinhaComparativa[]): LinhaComparativa[] {
+  return linhas.map((l, i) => ({ ...l, rk: i + 1 }));
 }
 
 export async function getComparativoUF(
@@ -249,7 +261,9 @@ export async function getComparativoUF(
     return M.mockComparativoUF(anoAtual, anoAnterior, meses);
   }
   const rows = await run(Q.comparativoUF(anoAtual, anoAnterior, meses));
-  return rows.map((r) => mapComparativa(r, String(r.ROTULO ?? "").trim()));
+  return comRanking(
+    rows.map((r) => mapComparativa(r, String(r.ROTULO ?? "").trim()))
+  );
 }
 
 export async function getComparativoRepresentantesGerencial(
@@ -264,10 +278,12 @@ export async function getComparativoRepresentantesGerencial(
   const rows = await run(
     Q.comparativoRepresentantesGerencial(anoAtual, anoAnterior, meses)
   );
-  return rows.map((r) =>
-    mapComparativa(r, String(r.ROTULO ?? "").trim(), {
-      codigo: toNumber(r.CODIGO),
-    })
+  return comRanking(
+    rows.map((r) =>
+      mapComparativa(r, String(r.ROTULO ?? "").trim(), {
+        codigo: toNumber(r.CODIGO),
+      })
+    )
   );
 }
 

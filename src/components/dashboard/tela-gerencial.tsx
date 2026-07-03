@@ -12,8 +12,10 @@ import type {
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DashboardCard } from "./dashboard-card";
+import { GerencialToolbar } from "./gerencial-toolbar";
+import type { GerencialControles } from "./gerencial-toolbar";
 import { LoadingIndicator } from "./loading-indicator";
-import { pctDeltaCell } from "./pct-badge";
+import { PctBadge, pctDeltaCell } from "./pct-badge";
 import { TabelaGraficoCard } from "./panel-cards";
 import type { Coluna } from "./generic-table";
 import type { SerieBar } from "./generic-bar-chart";
@@ -23,29 +25,60 @@ const pctCell = pctDeltaCell;
 const brlCell = (v: unknown) => formatBRL(Number(v));
 const intCell = (v: unknown) => formatInt(Number(v));
 
+/** Variação percentual (atual sobre anterior), ou null se não há base. */
+function pct(atual: number, anterior: number): number | null {
+  return anterior ? (atual / anterior - 1) * 100 : null;
+}
+
 const colunasSnapshot: Coluna<SnapshotAno>[] = [
   { key: "ano", label: "Ano" },
   { key: "vendas", label: "Vendas", align: "right", format: brlCell },
-  { key: "pedidos", label: "Pedidos", align: "right", format: intCell },
   { key: "pctVend", label: "% Vend.", align: "right", format: pctCell },
+  { key: "pedidos", label: "Pedidos", align: "right", format: intCell },
+  { key: "pctQtd", label: "% Qtd", align: "right", format: pctCell },
 ];
 
 const serieSnapshot: SerieBar[] = [
   { key: "vendas", label: "Vendas", color: CHART_COLORS[0] },
 ];
 
+interface TotaisComparativo {
+  vendAnt: number;
+  pedAnt: number;
+  vendAtu: number;
+  pedAtu: number;
+}
+
+function calcTotais(rows: LinhaComparativa[]): TotaisComparativo {
+  return rows.reduce<TotaisComparativo>(
+    (a, r) => ({
+      vendAnt: a.vendAnt + r.vendAnt,
+      pedAnt: a.pedAnt + r.pedAnt,
+      vendAtu: a.vendAtu + r.vendAtu,
+      pedAtu: a.pedAtu + r.pedAtu,
+    }),
+    { vendAnt: 0, pedAnt: 0, vendAtu: 0, pedAtu: 0 }
+  );
+}
+
 function colunasComparativo(
   anoAtual: number,
-  anoAnterior: number
+  anoAnterior: number,
+  opts: { rotuloLabel: string; comRk?: boolean; totais: TotaisComparativo }
 ): Coluna<LinhaComparativa>[] {
-  return [
-    { key: "rotulo", label: "Rótulo" },
-    { key: "vendAnt", label: `Vend. ${anoAnterior}`, align: "right", format: brlCell },
-    { key: "pedAnt", label: `Ped. ${anoAnterior}`, align: "right", format: intCell },
-    { key: "vendAtu", label: `Vend. ${anoAtual}`, align: "right", format: brlCell },
-    { key: "pedAtu", label: `Ped. ${anoAtual}`, align: "right", format: intCell },
-    { key: "pctVend", label: "% Vend.", align: "right", format: pctCell },
-  ];
+  const { rotuloLabel, comRk, totais } = opts;
+  const cols: Coluna<LinhaComparativa>[] = [];
+  if (comRk) {
+    cols.push({ key: "rk", label: "#", footer: "" });
+  }
+  cols.push({ key: "rotulo", label: rotuloLabel, footer: "Total" });
+  cols.push({ key: "vendAnt", label: `Vend. ${anoAnterior}`, align: "right", format: brlCell, footer: formatBRL(totais.vendAnt) });
+  cols.push({ key: "pedAnt", label: `Ped. ${anoAnterior}`, align: "right", format: intCell, footer: formatInt(totais.pedAnt) });
+  cols.push({ key: "vendAtu", label: `Vend. ${anoAtual}`, align: "right", format: brlCell, footer: formatBRL(totais.vendAtu) });
+  cols.push({ key: "pedAtu", label: `Ped. ${anoAtual}`, align: "right", format: intCell, footer: formatInt(totais.pedAtu) });
+  cols.push({ key: "pctVend", label: "% Vend.", align: "right", format: pctCell, footer: <PctBadge value={pct(totais.vendAtu, totais.vendAnt)} /> });
+  cols.push({ key: "pctPed", label: "% Ped.", align: "right", format: pctCell, footer: <PctBadge value={pct(totais.pedAtu, totais.pedAnt)} /> });
+  return cols;
 }
 
 function serieComparativo(anoAtual: number, anoAnterior: number): SerieBar[] {
@@ -58,12 +91,6 @@ function serieComparativo(anoAtual: number, anoAnterior: number): SerieBar[] {
 const linhaKey = (row: LinhaComparativa) =>
   `${row.rotulo}-${row.codigo ?? row.ordem ?? ""}`;
 
-const rotuloComo = (
-  cols: Coluna<LinhaComparativa>[],
-  label: string
-): Coluna<LinhaComparativa>[] =>
-  cols.map((c) => (c.key === "rotulo" ? { ...c, label } : c));
-
 interface TelaGerencialProps {
   anoAtual: number;
   anoAnterior: number;
@@ -73,6 +100,7 @@ interface TelaGerencialProps {
   loading: boolean;
   error: string | null;
   onRetry: () => void;
+  controles: GerencialControles;
 }
 
 export function TelaGerencial({
@@ -84,6 +112,7 @@ export function TelaGerencial({
   loading,
   error,
   onRetry,
+  controles,
 }: TelaGerencialProps) {
   if (error) {
     return (
@@ -103,12 +132,26 @@ export function TelaGerencial({
     );
   }
 
-  const colsComp = colunasComparativo(anoAtual, anoAnterior);
   const serieComp = serieComparativo(anoAtual, anoAnterior);
 
   const subtituloAnos = `${anoAnterior} × ${anoAtual}`;
   // Drill sempre sobre faturamento (a visão gerencial usa TIPMOV='V').
   const baseCtx = { tipmov: "V" as const, meses, anoAtual, anoAnterior };
+
+  const colsUF = colunasComparativo(anoAtual, anoAnterior, {
+    rotuloLabel: "UF",
+    comRk: true,
+    totais: calcTotais(data.uf),
+  });
+  const colsRep = colunasComparativo(anoAtual, anoAnterior, {
+    rotuloLabel: "Representante",
+    comRk: true,
+    totais: calcTotais(data.representantes),
+  });
+  const colsMensal = colunasComparativo(anoAtual, anoAnterior, {
+    rotuloLabel: "Mês",
+    totais: calcTotais(data.mensal),
+  });
 
   const snapshots: {
     titulo: string;
@@ -124,13 +167,16 @@ export function TelaGerencial({
   return (
     <div className="flex h-full flex-col gap-5">
       <LoadingIndicator show={loading} />
-      <div className="shrink-0">
-        <h2 className="text-lg font-semibold tracking-tight">
-          Visão Gerencial
-        </h2>
-        <p className="text-sm text-muted-foreground">
-          Comparativo {anoAnterior} × {anoAtual} — faturamento consolidado
-        </p>
+      <div className="flex shrink-0 items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold tracking-tight">
+            Visão Gerencial
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            Comparativo {anoAnterior} × {anoAtual} — faturamento consolidado
+          </p>
+        </div>
+        <GerencialToolbar {...controles} />
       </div>
 
       {/* Recortes por ano — preenche proporcionalmente */}
@@ -140,7 +186,7 @@ export function TelaGerencial({
             <TabelaGraficoCard<SnapshotAno>
               key={s.titulo}
               title={s.titulo}
-              subtitle={`Vendas por ano · ${subtituloAnos}`}
+              subtitle="Vendas por ano · todos os anos"
               data={s.data}
               colunas={colunasSnapshot}
               rowKey={(r) => r.ano}
@@ -158,7 +204,7 @@ export function TelaGerencial({
             <CardSkeleton
               key={s.titulo}
               title={s.titulo}
-              subtitle={`Vendas por ano · ${subtituloAnos}`}
+              subtitle="Vendas por ano · todos os anos"
             />
           )
         )}
@@ -171,8 +217,9 @@ export function TelaGerencial({
             title="Vendas por UF"
             subtitle={`Ranking de estados · ${subtituloAnos}`}
             data={data.uf}
-            colunas={rotuloComo(colsComp, "UF")}
+            colunas={colsUF}
             rowKey={linhaKey}
+            showFooter
             categoryKey="rotulo"
             series={serieComp}
             horizontal
@@ -192,8 +239,9 @@ export function TelaGerencial({
             title="Vendas por representante"
             subtitle={`Evolução por representante · ${subtituloAnos}`}
             data={data.representantes}
-            colunas={rotuloComo(colsComp, "Representante")}
+            colunas={colsRep}
             rowKey={linhaKey}
+            showFooter
             categoryKey="rotulo"
             series={serieComp}
             horizontal
@@ -216,8 +264,9 @@ export function TelaGerencial({
             title="Vendas por mês"
             subtitle={`Sazonalidade mensal · ${subtituloAnos}`}
             data={data.mensal}
-            colunas={rotuloComo(colsComp, "Mês")}
+            colunas={colsMensal}
             rowKey={linhaKey}
+            showFooter
             categoryKey="rotulo"
             series={serieComp}
             csvFileName="gerencial_mensal"
