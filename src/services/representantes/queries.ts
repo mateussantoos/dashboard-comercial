@@ -1,25 +1,10 @@
 import type { SankhyaQueryParam } from "@/types/global";
-import type { DrillContexto, PeriodoSnapshot, TipMov } from "./types";
+import type { DrillContexto, PeriodoSnapshot } from "./types";
 
 /** Uma consulta SQL pronta com seus parâmetros tipados (padrão do boilerplate). */
 export interface Query {
   sql: string;
   params: SankhyaQueryParam[];
-}
-
-/**
- * Filtro base comum a todas as consultas de venda:
- * tipo de movimento (V/P), somente notas confirmadas (STATUSNOTA='L')
- * e o representante selecionado.
- */
-const WHERE_BASE =
-  "CAB.TIPMOV = ? AND CAB.STATUSNOTA = 'L' AND CAB.CODVEND = ?";
-
-function baseParams(tipmov: TipMov, codvend: number): SankhyaQueryParam[] {
-  return [
-    { value: tipmov, type: "S" },
-    { value: codvend, type: "I" },
-  ];
 }
 
 /**
@@ -95,79 +80,76 @@ export function listRepresentantes(): Query {
   };
 }
 
-/** Total faturado por ano (gráfico anual). */
-export function vendasPorAno(
-  codvend: number,
-  tipmov: TipMov,
-  meses?: number[]
-): Query {
+// A tela "Por Representante" usa a MESMA base do BI antigo/Visão Gerencial
+// (CODTIPOPER/DTMOV/VLRPED), filtrada pelo vendedor — para os números baterem
+// entre as telas.
+
+/** Total (VLRPED) por ano do representante (gráfico anual). */
+export function vendasPorAno(codvend: number, meses?: number[]): Query {
   return {
     sql: `
-      SELECT YEAR(CAB.DTNEG) AS ANO,
-             SUM(CAB.VLRNOTA) AS TOTAL,
+      SELECT YEAR(CAB.DTMOV) AS ANO,
+             SUM(X.VLRPED) AS TOTAL,
              COUNT(CAB.NUNOTA) AS QTD
       FROM TGFCAB CAB
-      WHERE ${WHERE_BASE}
-        ${filtroMeses(meses)}
-      GROUP BY YEAR(CAB.DTNEG)
+      ${GER_JOINS_UF}
+      WHERE ${GER_TOPS} AND CAB.CODVEND = ?
+        ${filtroMeses(meses, "CAB.DTMOV")}
+      GROUP BY YEAR(CAB.DTMOV)
       ORDER BY ANO
     `,
-    params: baseParams(tipmov, codvend),
+    params: [{ value: codvend, type: "I" }],
   };
 }
 
 /** Total por ano e mês, limitado aos últimos N anos (sazonalidade). */
 export function vendasAnoMes(
   codvend: number,
-  tipmov: TipMov,
   anos = 4,
   meses?: number[]
 ): Query {
   return {
     sql: `
-      SELECT YEAR(CAB.DTNEG) AS ANO,
-             MONTH(CAB.DTNEG) AS MES,
-             SUM(CAB.VLRNOTA) AS TOTAL,
+      SELECT YEAR(CAB.DTMOV) AS ANO,
+             MONTH(CAB.DTMOV) AS MES,
+             SUM(X.VLRPED) AS TOTAL,
              COUNT(CAB.NUNOTA) AS QTD
       FROM TGFCAB CAB
-      WHERE ${WHERE_BASE}
-        AND CAB.DTNEG >= DATEADD(YEAR, ?, GETDATE())
-        ${filtroMeses(meses)}
-      GROUP BY YEAR(CAB.DTNEG), MONTH(CAB.DTNEG)
+      ${GER_JOINS_UF}
+      WHERE ${GER_TOPS} AND CAB.CODVEND = ?
+        AND CAB.DTMOV >= DATEADD(YEAR, ?, GETDATE())
+        ${filtroMeses(meses, "CAB.DTMOV")}
+      GROUP BY YEAR(CAB.DTMOV), MONTH(CAB.DTMOV)
       ORDER BY ANO, MES
     `,
-    params: [...baseParams(tipmov, codvend), { value: -Math.abs(anos), type: "I" }],
+    params: [
+      { value: codvend, type: "I" },
+      { value: -Math.abs(anos), type: "I" },
+    ],
   };
 }
 
 /** Total por UF (estado) do representante. */
-export function vendasPorUF(
-  codvend: number,
-  tipmov: TipMov,
-  meses?: number[]
-): Query {
+export function vendasPorUF(codvend: number, meses?: number[]): Query {
   return {
     sql: `
-      SELECT UF.UF AS UF,
-             SUM(CAB.VLRNOTA) AS TOTAL,
+      SELECT EST.UF AS UF,
+             SUM(X.VLRPED) AS TOTAL,
              COUNT(CAB.NUNOTA) AS QTD
       FROM TGFCAB CAB
-      INNER JOIN TGFPAR PAR ON PAR.CODPARC = CAB.CODPARC
-      INNER JOIN TSICID CID ON CID.CODCID = PAR.CODCID
-      INNER JOIN TSIUFS UF ON UF.CODUF = CID.UF
-      WHERE ${WHERE_BASE}
-        ${filtroMeses(meses)}
-      GROUP BY UF.UF
+      ${GER_JOINS_UF}
+      WHERE ${GER_TOPS} AND CAB.CODVEND = ?
+        ${filtroMeses(meses, "CAB.DTMOV")}
+      GROUP BY EST.UF
       ORDER BY TOTAL DESC
     `,
-    params: baseParams(tipmov, codvend),
+    params: [{ value: codvend, type: "I" }],
   };
 }
 
 /** Ranking de clientes do representante (por valor). */
 export function topClientes(
   codvend: number,
-  tipmov: TipMov,
   limite = 10,
   meses?: number[]
 ): Query {
@@ -177,23 +159,26 @@ export function topClientes(
       SELECT TOP ${top}
              PAR.CODPARC AS CODIGO,
              RTRIM(PAR.NOMEPARC) AS NOME,
-             SUM(CAB.VLRNOTA) AS TOTAL,
+             SUM(X.VLRPED) AS TOTAL,
              COUNT(CAB.NUNOTA) AS QTD
       FROM TGFCAB CAB
-      INNER JOIN TGFPAR PAR ON PAR.CODPARC = CAB.CODPARC
-      WHERE ${WHERE_BASE}
-        ${filtroMeses(meses)}
+      ${GER_JOINS_UF}
+      WHERE ${GER_TOPS} AND CAB.CODVEND = ?
+        ${filtroMeses(meses, "CAB.DTMOV")}
       GROUP BY PAR.CODPARC, PAR.NOMEPARC
       ORDER BY TOTAL DESC
     `,
-    params: baseParams(tipmov, codvend),
+    params: [{ value: codvend, type: "I" }],
   };
 }
 
-/** Ranking de produtos vendidos pelo representante (nível item da nota). */
+/**
+ * Ranking de produtos vendidos pelo representante (nível item da nota).
+ * Usa o valor líquido do item `(QTDNEG*VLRUNIT)-VLRDESC` — base do VLRPED antes
+ * do multiplicador por tabela de preço, que é por nota e não por produto.
+ */
 export function topProdutos(
   codvend: number,
-  tipmov: TipMov,
   limite = 10,
   meses?: number[]
 ): Query {
@@ -203,29 +188,29 @@ export function topProdutos(
       SELECT TOP ${top}
              PRO.CODPROD AS CODIGO,
              RTRIM(PRO.DESCRPROD) AS NOME,
-             SUM(ITE.VLRTOT) AS TOTAL,
+             SUM((ITE.QTDNEG * ITE.VLRUNIT) - ITE.VLRDESC) AS TOTAL,
              SUM(ITE.QTDNEG) AS QTD
       FROM TGFCAB CAB
       INNER JOIN TGFITE ITE ON ITE.NUNOTA = CAB.NUNOTA
       INNER JOIN TGFPRO PRO ON PRO.CODPROD = ITE.CODPROD
-      WHERE ${WHERE_BASE}
-        ${filtroMeses(meses)}
+      INNER JOIN TGFPAR PAR ON PAR.CODPARC = CAB.CODPARC
+      INNER JOIN TSICID CID ON CID.CODCID = PAR.CODCID
+      INNER JOIN TSIUFS EST ON EST.CODUF = CID.UF
+      WHERE ${GER_TOPS} AND CAB.CODVEND = ?
+        ${filtroMeses(meses, "CAB.DTMOV")}
       GROUP BY PRO.CODPROD, PRO.DESCRPROD
       ORDER BY TOTAL DESC
     `,
-    params: baseParams(tipmov, codvend),
+    params: [{ value: codvend, type: "I" }],
   };
 }
 
 /**
- * Totais por ano de vários representantes (comparativo).
+ * Totais por ano de vários representantes (comparativo) — mesma base do BI.
  * Os códigos são validados como inteiros e interpolados na cláusula IN
  * (evita depender de bind de lista, mantendo a segurança).
  */
-export function comparativoRepresentantes(
-  codvends: number[],
-  tipmov: TipMov
-): Query {
+export function comparativoRepresentantes(codvends: number[]): Query {
   const lista = codvends
     .map((c) => Math.trunc(Number(c)))
     .filter((c) => Number.isFinite(c) && c > 0);
@@ -235,16 +220,16 @@ export function comparativoRepresentantes(
   return {
     sql: `
       SELECT CAB.CODVEND AS CODVEND,
-             YEAR(CAB.DTNEG) AS ANO,
-             SUM(CAB.VLRNOTA) AS TOTAL
+             YEAR(CAB.DTMOV) AS ANO,
+             SUM(X.VLRPED) AS TOTAL
       FROM TGFCAB CAB
-      WHERE CAB.TIPMOV = ?
-        AND CAB.STATUSNOTA = 'L'
+      ${GER_JOINS_UF}
+      WHERE ${GER_TOPS}
         AND CAB.CODVEND IN (${inClause})
-      GROUP BY CAB.CODVEND, YEAR(CAB.DTNEG)
+      GROUP BY CAB.CODVEND, YEAR(CAB.DTMOV)
       ORDER BY ANO
     `,
-    params: [{ value: tipmov, type: "S" }],
+    params: [],
   };
 }
 

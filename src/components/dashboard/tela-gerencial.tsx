@@ -10,11 +10,10 @@ import type {
   ProntoGerencial,
 } from "@/hooks/use-dashboard-data";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { DashboardCard } from "./dashboard-card";
+import { CardLoading } from "./card-loading";
 import { GerencialToolbar } from "./gerencial-toolbar";
 import type { GerencialControles } from "./gerencial-toolbar";
-import { LoadingIndicator } from "./loading-indicator";
 import { PctBadge, pctDeltaCell } from "./pct-badge";
 import { TabelaGraficoCard } from "./panel-cards";
 import type { Coluna } from "./generic-table";
@@ -97,7 +96,6 @@ interface TelaGerencialProps {
   meses: number[];
   data: GerencialData;
   pronto: ProntoGerencial;
-  loading: boolean;
   error: string | null;
   onRetry: () => void;
   controles: GerencialControles;
@@ -109,7 +107,6 @@ export function TelaGerencial({
   meses,
   data,
   pronto,
-  loading,
   error,
   onRetry,
   controles,
@@ -172,7 +169,6 @@ export function TelaGerencial({
 
   return (
     <div className="flex h-full flex-col gap-5">
-      <LoadingIndicator show={loading} />
       <div className="flex shrink-0 items-start justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold tracking-tight">
@@ -294,7 +290,7 @@ export function TelaGerencial({
 function CardSkeleton({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
     <DashboardCard title={title} subtitle={subtitle} fill>
-      <Skeleton className="h-full w-full" />
+      <CardLoading />
     </DashboardCard>
   );
 }

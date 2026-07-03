@@ -98,7 +98,7 @@ export async function getVendasAno(
     await delay(300);
     return M.mockVendasAno(codvend, tipmov, meses);
   }
-  const rows = await run(Q.vendasPorAno(codvend, tipmov, meses));
+  const rows = await run(Q.vendasPorAno(codvend, meses));
   return rows.map((r) => ({
     ano: toNumber(r.ANO),
     total: toNumber(r.TOTAL),
@@ -116,7 +116,7 @@ export async function getVendasAnoMes(
     await delay(300);
     return M.mockVendasAnoMes(codvend, tipmov, anos, meses);
   }
-  const rows = await run(Q.vendasAnoMes(codvend, tipmov, anos, meses));
+  const rows = await run(Q.vendasAnoMes(codvend, anos, meses));
   return rows.map((r) => ({
     ano: toNumber(r.ANO),
     mes: toNumber(r.MES),
@@ -134,7 +134,7 @@ export async function getVendasUF(
     await delay(300);
     return M.mockVendasUF(codvend, tipmov, meses);
   }
-  const rows = await run(Q.vendasPorUF(codvend, tipmov, meses));
+  const rows = await run(Q.vendasPorUF(codvend, meses));
   return rows.map((r) => ({
     uf: String(r.UF ?? "").trim(),
     total: toNumber(r.TOTAL),
@@ -152,7 +152,7 @@ export async function getTopClientes(
     await delay(300);
     return M.mockTopClientes(codvend, tipmov, limite, meses);
   }
-  const rows = await run(Q.topClientes(codvend, tipmov, limite, meses));
+  const rows = await run(Q.topClientes(codvend, limite, meses));
   return rows.map(mapTopItem);
 }
 
@@ -166,7 +166,7 @@ export async function getTopProdutos(
     await delay(300);
     return M.mockTopProdutos(codvend, tipmov, limite, meses);
   }
-  const rows = await run(Q.topProdutos(codvend, tipmov, limite, meses));
+  const rows = await run(Q.topProdutos(codvend, limite, meses));
   return rows.map(mapTopItem);
 }
 
@@ -179,7 +179,7 @@ export async function getComparativo(
     return M.mockComparativo(codvends, tipmov);
   }
   if (!codvends.length) return [];
-  const rows = await run(Q.comparativoRepresentantes(codvends, tipmov));
+  const rows = await run(Q.comparativoRepresentantes(codvends));
   return rows.map((r) => ({
     codvend: toNumber(r.CODVEND),
     ano: toNumber(r.ANO),

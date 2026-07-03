@@ -123,7 +123,6 @@ function App() {
             meses={meses}
             data={gerencial.data}
             pronto={gerencial.pronto}
-            loading={gerencial.loading}
             error={gerencial.error}
             onRetry={gerencial.retry}
             controles={controles}

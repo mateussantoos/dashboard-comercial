@@ -19,7 +19,6 @@ import { resumoRepresentante } from "@/services/representantes/analytics";
 import { useVendasRepresentante } from "@/hooks/use-dashboard-data";
 import { formatBRL, formatInt } from "@/lib/format";
 
-import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -30,8 +29,8 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { DashboardCard } from "./dashboard-card";
+import { CardLoading } from "./card-loading";
 import { KpiCard } from "./kpi-card";
-import { LoadingIndicator } from "./loading-indicator";
 import { pctShareCell } from "./pct-badge";
 import { RepresentanteCombobox } from "./representante-select";
 import { metricaLabel } from "./tipmov-toggle";
@@ -125,7 +124,6 @@ export function TelaRepresentante({
 
   return (
     <div className="flex h-full flex-col gap-6">
-      <LoadingIndicator show={codvend != null && loading} />
       <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-lg font-semibold tracking-tight">
@@ -379,7 +377,7 @@ function JanelaAnosSelect({
 function CardSkeleton({ title }: { title: string }) {
   return (
     <DashboardCard title={title} fill>
-      <Skeleton className="h-full w-full" />
+      <CardLoading />
     </DashboardCard>
   );
 }

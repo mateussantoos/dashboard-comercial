@@ -63,8 +63,9 @@ export function Sidebar({
   modoDemo = false,
 }: SidebarProps) {
   const { toast } = useToast();
-  // A Visão Gerencial é consolidada em faturamento — base de cálculo travada.
-  const tipmovBloqueado = tela === "gerencial";
+  // Todo o dashboard usa a base consolidada do relatório (CODTIPOPER/VLRPED),
+  // sem distinção de faturamento/pedido — base de cálculo travada.
+  const tipmovBloqueado = true;
   return (
     <aside
       className={cn(
@@ -139,9 +140,9 @@ export function Sidebar({
               onChange={onTipmovChange}
               disabled={tipmovBloqueado}
               onDisabledClick={() =>
-                toast("Visão Gerencial usa apenas faturamento", {
+                toast("Base de cálculo fixa", {
                   description:
-                    "Os dados consolidados são baseados em notas faturadas. Troque para outra tela para analisar pedidos.",
+                    "Todo o dashboard usa a base consolidada do relatório (mesma do BI antigo). Não há distinção de faturamento/pedido.",
                   variant: "info",
                 })
               }
