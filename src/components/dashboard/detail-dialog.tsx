@@ -13,6 +13,8 @@ import {
 } from "recharts";
 
 import { formatBRL, formatBRLCompact, formatInt } from "@/lib/format";
+import type { RegistroDetalhe } from "@/services/representantes/types";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
   DialogContent,
@@ -40,28 +42,19 @@ export interface CampoDetalhe {
   valor: React.ReactNode;
 }
 
-/** Registro individual que compõe o dado agregado (drill-down). */
-export interface RegistroDetalhe {
-  id: string | number;
-  /** Descrição principal (nome do cliente, produto, etc.) */
-  descricao: string;
-  /** Valor monetário */
-  valor: number;
-  /** Data ou período */
-  periodo: string;
-  /** Campo auxiliar (UF, tipo, etc.) */
-  extra?: string;
-}
+export type { RegistroDetalhe };
 
 interface DetailDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: React.ReactNode;
   subtitle?: React.ReactNode;
-  /** Campos resumidos (KPIs) — exibidos no topo como cards. */
+  /** Campos resumidos (KPIs) — exibidos no topo como cards (fallback). */
   campos: CampoDetalhe[];
   /** Registros individuais que compõem o dado. */
   registros?: RegistroDetalhe[];
+  /** Enquanto busca os registros do drill-down. */
+  loading?: boolean;
 }
 
 const compactTick = (v: number | string) => formatBRLCompact(Number(v));
@@ -80,6 +73,7 @@ export function DetailDialog({
   subtitle,
   campos,
   registros = [],
+  loading = false,
 }: DetailDialogProps) {
   // Derivar KPIs dos registros
   const totalValor = registros.reduce((s, r) => s + r.valor, 0);
@@ -117,6 +111,18 @@ export function DetailDialog({
         </DialogHeader>
 
         <div className="flex-1 min-h-0 overflow-y-auto space-y-4">
+          {loading ? (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {[0, 1, 2, 3].map((i) => (
+                  <Skeleton key={i} className="h-16 w-full" />
+                ))}
+              </div>
+              <Skeleton className="h-[180px] w-full" />
+              <Skeleton className="h-[240px] w-full" />
+            </div>
+          ) : (
+            <>
           {/* KPIs resumo */}
           {hasRegistros ? (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -236,6 +242,8 @@ export function DetailDialog({
               </div>
             </div>
           ) : null}
+            </>
+          )}
         </div>
       </DialogContent>
     </Dialog>

@@ -92,3 +92,39 @@ export interface AnosComparativo {
   anoAtual: number;
   anoAnterior: number;
 }
+
+// --- Drill-down (detalhamento ao clicar em uma linha/barra) ---
+
+/** Registro individual (nota) que compõe um dado agregado. */
+export interface RegistroDetalhe {
+  id: string | number;
+  /** Descrição principal (cliente, produto, etc.). */
+  descricao: string;
+  /** Valor monetário (VLRNOTA). */
+  valor: number;
+  /** Data/período (yyyy-mm-dd) — usado no gráfico e na tabela. */
+  periodo: string;
+  /** Campo auxiliar (vendedor, UF). */
+  extra?: string;
+}
+
+/**
+ * Contexto do detalhamento: descreve a dimensão clicada. Os registros
+ * retornados são as notas que compõem exatamente aquele dado.
+ */
+export interface DrillContexto {
+  tipmov: TipMov;
+  meses: number[];
+  anoAtual?: number;
+  anoAnterior?: number;
+  /** Recorte por um ano específico. */
+  ano?: number;
+  /** Recorte por um mês específico (1..12). */
+  mes?: number;
+  uf?: string;
+  codvend?: number;
+  codparc?: number;
+  codprod?: number;
+  /** Ignora o filtro de anos (usa todo o histórico). */
+  todosAnos?: boolean;
+}

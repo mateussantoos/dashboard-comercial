@@ -37,30 +37,33 @@ interface MesesFilterProps {
 export function MesesFilter({ value, onChange, className }: MesesFilterProps) {
   const [busca, setBusca] = useState("");
 
-  const todosMarcados = value.length >= 12 || value.length === 0;
+  const todosMarcados = value.length >= 12;
+  const nenhumMarcado = value.length === 0;
   const filtrados = MESES.filter((m) =>
     m.label.toLowerCase().includes(busca.trim().toLowerCase())
   );
 
   function marcado(n: number) {
-    return todosMarcados || value.includes(n);
+    return value.includes(n);
   }
 
   function toggle(n: number) {
-    const base = todosMarcados ? [...TODOS] : value;
-    const proximo = base.includes(n)
-      ? base.filter((m) => m !== n)
-      : [...base, n];
+    const proximo = value.includes(n)
+      ? value.filter((m) => m !== n)
+      : [...value, n];
     onChange(proximo.sort((a, b) => a - b));
   }
 
   function toggleTodos() {
+    // Marcado (todos) → desmarca todos; caso contrário → marca todos.
     onChange(todosMarcados ? [] : [...TODOS]);
   }
 
   const label = todosMarcados
     ? "Todos os meses"
-    : `${value.length} ${value.length === 1 ? "mês" : "meses"}`;
+    : nenhumMarcado
+      ? "Nenhum mês"
+      : `${value.length} ${value.length === 1 ? "mês" : "meses"}`;
 
   return (
     <Popover>

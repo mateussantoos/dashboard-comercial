@@ -11,6 +11,7 @@ import { useComparativo } from "@/hooks/use-dashboard-data";
 import { formatBRL, formatInt } from "@/lib/format";
 import { Skeleton } from "@/components/ui/skeleton";
 import { KpiCard } from "./kpi-card";
+import { LoadingIndicator } from "./loading-indicator";
 import { GraficoCard, TabelaGraficoCard } from "./panel-cards";
 import { RepresentanteMultiSelect } from "./representante-select";
 import { ChartComparativo, CHART_COLORS } from "./charts";
@@ -130,6 +131,7 @@ export function TelaComparar({
 
   return (
     <div className="flex h-full flex-col gap-6">
+      <LoadingIndicator show={selecionados.length > 0 && loading} />
       <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-lg font-semibold tracking-tight">

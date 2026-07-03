@@ -58,7 +58,7 @@ export function GenericBarChart({
   return (
     <ChartContainer
       config={config}
-      className="aspect-auto h-full w-full"
+      className="aspect-auto h-full min-h-[280px] w-full"
     >
       <BarChart
         data={data}

@@ -198,6 +198,38 @@ function _bindParams(query: string, params: SankhyaQueryParam[]): string {
  *   [{ value: 0, type: "I" }]
  * )
  */
+/**
+ * (INTERNAL) Rejects if a promise does not settle within `ms`. Prevents a
+ * hung `executeQuery` (e.g. a cold, slow query whose callback never fires)
+ * from leaving the UI stuck on an infinite loading state.
+ */
+function _withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(
+        new Error(
+          `[SankhyaService.executeQuery] Tempo limite de ${Math.round(
+            ms / 1000
+          )}s excedido — a consulta pode estar lenta no servidor.`
+        )
+      );
+    }, ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
+}
+
+/** Tempo máximo (ms) de espera por consulta antes de considerar falha. */
+const QUERY_TIMEOUT_MS = 30000;
+
 export async function executeQuery(
   query: string,
   params: SankhyaQueryParam[] = []
@@ -206,20 +238,23 @@ export async function executeQuery(
 
   // Primary path: native runtime injected by <snk:load/> (server-side binding).
   if (typeof window.executeQuery === "function") {
-    return new Promise<any[]>((resolve, reject) => {
-      window.executeQuery!(
-        query,
-        params,
-        (value) => {
-          try {
-            resolve(value ? JSON.parse(value) : []);
-          } catch (e) {
-            reject(e);
-          }
-        },
-        (error) => reject(error)
-      );
-    });
+    return _withTimeout(
+      new Promise<any[]>((resolve, reject) => {
+        window.executeQuery!(
+          query,
+          params,
+          (value) => {
+            try {
+              resolve(value ? JSON.parse(value) : []);
+            } catch (e) {
+              reject(e);
+            }
+          },
+          (error) => reject(error)
+        );
+      }),
+      QUERY_TIMEOUT_MS
+    );
   }
 
   // Fallback path: direct service.sbr call with client-side bound placeholders.
@@ -231,7 +266,7 @@ export async function executeQuery(
     requestBody: { sql: boundQuery },
   };
 
-  const request = await post(url, payload);
+  const request = await _withTimeout(post(url, payload), QUERY_TIMEOUT_MS);
 
   return _parseQueryResponse(request);
 }

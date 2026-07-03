@@ -1,7 +1,9 @@
 import type {
   ComparativoPonto,
+  DrillContexto,
   LinhaComparativa,
   PeriodoSnapshot,
+  RegistroDetalhe,
   Representante,
   SnapshotAno,
   TipMov,
@@ -125,14 +127,15 @@ export function mockRepresentantes(): Representante[] {
   return [...MOCK_REPRESENTANTES];
 }
 
-/** True quando o mês entra no filtro (vazio/12 = todos). */
+/**
+ * True quando o mês entra no filtro.
+ * - `undefined` ou 12 meses = todos.
+ * - `[]` (nenhum selecionado) = nenhum.
+ */
 function incluiMes(meses: number[] | undefined, mes: number): boolean {
-  return (
-    !meses ||
-    meses.length === 0 ||
-    meses.length >= 12 ||
-    meses.includes(mes)
-  );
+  if (!meses || meses.length >= 12) return true;
+  if (meses.length === 0) return false;
+  return meses.includes(mes);
 }
 
 export function mockVendasAnoMes(
@@ -456,3 +459,92 @@ const MESES_NOMES = [
   "Novembro",
   "Dezembro",
 ];
+
+// --- Drill-down: notas fictícias que compõem um dado agregado ---
+
+const START_YEAR_DRILL = 2019;
+
+function hashCtx(ctx: DrillContexto): number {
+  const s = [
+    ctx.tipmov,
+    ctx.ano ?? "",
+    ctx.mes ?? "",
+    ctx.uf ?? "",
+    ctx.codvend ?? "",
+    ctx.codparc ?? "",
+    ctx.codprod ?? "",
+    ctx.todosAnos ? "T" : "",
+  ].join("|");
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function pad2(n: number): string {
+  return n < 10 ? `0${n}` : String(n);
+}
+
+/**
+ * Gera notas fictícias que compõem o dado clicado, honrando a dimensão do
+ * contexto (ano/mês/UF/vendedor/cliente/produto).
+ */
+export function mockRegistrosDetalhe(ctx: DrillContexto): RegistroDetalhe[] {
+  const rand = rng(hashCtx(ctx));
+  const anoAtual = now().getFullYear();
+
+  // Anos considerados.
+  let anos: number[];
+  if (ctx.ano != null) {
+    anos = [ctx.ano];
+  } else if (ctx.todosAnos) {
+    anos = [];
+    for (let a = START_YEAR_DRILL; a <= anoAtual; a++) anos.push(a);
+  } else if (ctx.anoAtual != null && ctx.anoAnterior != null) {
+    anos = [ctx.anoAnterior, ctx.anoAtual];
+  } else {
+    anos = [anoAtual];
+  }
+
+  // Meses considerados.
+  const mesesBase =
+    ctx.mes != null ? [ctx.mes] : Array.from({ length: 12 }, (_, i) => i + 1);
+  const meses = mesesBase.filter((m) => incluiMes(ctx.meses, m));
+  if (!meses.length) meses.push(ctx.mes ?? 1);
+
+  // Descrição principal: se filtrou por cliente, mostra o produto; caso
+  // contrário mostra o cliente comprador.
+  const usarProdutoComoDescricao = ctx.codparc != null;
+  const listaDescricao = usarProdutoComoDescricao ? PRODUTOS : CLIENTES;
+  const ticket = usarProdutoComoDescricao ? 60 : 2500;
+
+  // Campo auxiliar: UF quando o recorte já é por vendedor; senão o vendedor.
+  const vendedores = MOCK_REPRESENTANTES.map((r) => r.nome);
+  const mostrarUf = ctx.codvend != null || ctx.uf != null;
+
+  const n = 24 + Math.floor(rand() * 60);
+  const registros: RegistroDetalhe[] = [];
+
+  for (let i = 0; i < n; i++) {
+    const ano = anos[Math.floor(rand() * anos.length)];
+    const mes = meses[Math.floor(rand() * meses.length)];
+    const dia = 1 + Math.floor(rand() * 28);
+    const valor = Math.round((ticket * 0.4 + rand() * ticket * 2.6) * 100) / 100;
+    const descricao = listaDescricao[Math.floor(rand() * listaDescricao.length)];
+    const extra = mostrarUf
+      ? ctx.uf ?? UFS[Math.floor(rand() * UFS.length)]
+      : vendedores[Math.floor(rand() * vendedores.length)];
+
+    registros.push({
+      id: `${ano}${pad2(mes)}${pad2(dia)}-${i}`,
+      descricao,
+      valor,
+      periodo: `${ano}-${pad2(mes)}-${pad2(dia)}`,
+      extra,
+    });
+  }
+
+  return registros.sort((a, b) => b.periodo.localeCompare(a.periodo));
+}

@@ -15,16 +15,30 @@ interface TipMovToggleProps {
   value: TipMov;
   onChange: (value: TipMov) => void;
   className?: string;
+  /** Bloqueia a troca (ex.: telas que só usam faturamento). */
+  disabled?: boolean;
+  /** Chamado ao clicar quando bloqueado (ex.: exibir um toast). */
+  onDisabledClick?: () => void;
 }
 
-/** Segmented control: base de cálculo Faturamento (nota) x Pedidos. */
-export function TipMovToggle({ value, onChange, className }: TipMovToggleProps) {
+/**
+ * Segmented control: base de cálculo Faturamento (nota) x Pedidos.
+ * As opções dividem a largura igualmente (50/50).
+ */
+export function TipMovToggle({
+  value,
+  onChange,
+  className,
+  disabled = false,
+  onDisabledClick,
+}: TipMovToggleProps) {
   return (
     <div
       role="tablist"
       aria-label="Base de cálculo"
       className={cn(
-        "inline-flex h-9 items-center rounded-lg border bg-muted p-[3px]",
+        "flex h-9 w-full items-center rounded-lg border bg-muted p-[3px]",
+        disabled && "opacity-70",
         className
       )}
     >
@@ -36,9 +50,17 @@ export function TipMovToggle({ value, onChange, className }: TipMovToggleProps) 
             type="button"
             role="tab"
             aria-selected={ativo}
-            onClick={() => onChange(opt.value)}
+            aria-disabled={disabled}
+            onClick={() => {
+              if (disabled) {
+                onDisabledClick?.();
+                return;
+              }
+              onChange(opt.value);
+            }}
             className={cn(
-              "cursor-pointer rounded-md px-3 py-1 text-sm font-medium transition-colors",
+              "flex-1 rounded-md px-3 py-1 text-center text-sm font-medium transition-colors",
+              disabled ? "cursor-not-allowed" : "cursor-pointer",
               ativo
                 ? "bg-background text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground"

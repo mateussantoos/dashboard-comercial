@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import {
   getComparativo,
@@ -121,49 +121,127 @@ export interface GerencialData {
   mensal: LinhaComparativa[];
 }
 
-/** Todos os conjuntos da visão gerencial (tela inicial). */
+type SecaoGerencial = keyof GerencialData;
+
+/** Marca de quais seções já carregaram (para skeleton por card). */
+export type ProntoGerencial = Record<SecaoGerencial, boolean>;
+
+export interface GerencialResultado {
+  data: GerencialData;
+  pronto: ProntoGerencial;
+  loading: boolean;
+  error: string | null;
+  retry: () => void;
+}
+
+const GERENCIAL_VAZIO: GerencialData = {
+  ontem: [],
+  hoje: [],
+  mes: [],
+  ano: [],
+  uf: [],
+  representantes: [],
+  mensal: [],
+};
+
+const NADA_PRONTO: ProntoGerencial = {
+  ontem: false,
+  hoje: false,
+  mes: false,
+  ano: false,
+  uf: false,
+  representantes: false,
+  mensal: false,
+};
+
+const TUDO_PRONTO: ProntoGerencial = {
+  ontem: true,
+  hoje: true,
+  mes: true,
+  ano: true,
+  uf: true,
+  representantes: true,
+  mensal: true,
+};
+
+/**
+ * Todos os conjuntos da visão gerencial (tela inicial).
+ *
+ * Cada seção é carregada de forma independente e renderizada assim que chega
+ * (as consultas rápidas não esperam a mais lenta). Uma seção que falhar não
+ * bloqueia as demais; `retry` recarrega tudo.
+ */
 export function useGerencial(
   anoAtual: number,
   anoAnterior: number,
   meses: number[] = []
-) {
-  const [data, setData] = useState<GerencialData | null>(null);
+): GerencialResultado {
+  const [data, setData] = useState<GerencialData>(GERENCIAL_VAZIO);
+  const [pronto, setPronto] = useState<ProntoGerencial>(NADA_PRONTO);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [tentativa, setTentativa] = useState(0);
   const chaveMeses = meses.join(",");
+
+  const retry = useCallback(() => setTentativa((t) => t + 1), []);
 
   useEffect(() => {
     let cancelado = false;
     setLoading(true);
     setError(null);
+    setData(GERENCIAL_VAZIO);
+    setPronto(NADA_PRONTO);
 
-    Promise.all([
-      getSnapshotAno("ontem"),
-      getSnapshotAno("hoje"),
-      getSnapshotAno("mes"),
-      getSnapshotAno("ano", meses),
-      getComparativoUF(anoAtual, anoAnterior, meses),
-      getComparativoRepresentantesGerencial(anoAtual, anoAnterior, meses),
-      getComparativoMensal(anoAtual, anoAnterior, meses),
-    ])
-      .then(([ontem, hoje, mes, ano, uf, representantes, mensal]) => {
-        if (cancelado) return;
-        setData({ ontem, hoje, mes, ano, uf, representantes, mensal });
-      })
-      .catch((e) => {
-        if (cancelado) return;
-        setError(mensagemErro(e));
-        setData(null);
-      })
-      .finally(() => !cancelado && setLoading(false));
+    const tarefas: [SecaoGerencial, Promise<SnapshotAno[] | LinhaComparativa[]>][] =
+      [
+        ["ontem", getSnapshotAno("ontem")],
+        ["hoje", getSnapshotAno("hoje")],
+        ["mes", getSnapshotAno("mes")],
+        ["ano", getSnapshotAno("ano", meses)],
+        ["uf", getComparativoUF(anoAtual, anoAnterior, meses)],
+        [
+          "representantes",
+          getComparativoRepresentantesGerencial(anoAtual, anoAnterior, meses),
+        ],
+        ["mensal", getComparativoMensal(anoAtual, anoAnterior, meses)],
+      ];
+
+    let pendentes = tarefas.length;
+    let sucessos = 0;
+    let ultimoErro: unknown = null;
+
+    for (const [secao, promessa] of tarefas) {
+      promessa
+        .then((resultado) => {
+          if (cancelado) return;
+          sucessos += 1;
+          setData((atual) => ({ ...atual, [secao]: resultado }));
+          setPronto((atual) => ({ ...atual, [secao]: true }));
+        })
+        .catch((e) => {
+          ultimoErro = e;
+          console.error(`[useGerencial] falha ao carregar "${secao}":`, e);
+        })
+        .finally(() => {
+          if (cancelado) return;
+          pendentes -= 1;
+          if (pendentes === 0) {
+            setLoading(false);
+            // Evita cards presos em skeleton eterno: seções que falharam
+            // ficam "prontas" (vazias). Só há erro global se tudo falhou.
+            setPronto(TUDO_PRONTO);
+            if (sucessos === 0) setError(mensagemErro(ultimoErro));
+          }
+        });
+    }
 
     return () => {
       cancelado = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [anoAtual, anoAnterior, chaveMeses]);
+  }, [anoAtual, anoAnterior, chaveMeses, tentativa]);
 
-  return { data, loading, error };
+  return { data, pronto, loading, error, retry };
 }
 
 /** Comparativo anual entre vários representantes. */

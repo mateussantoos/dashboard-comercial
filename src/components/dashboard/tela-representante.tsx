@@ -17,11 +17,7 @@ import type {
 } from "@/services/representantes/types";
 import { resumoRepresentante } from "@/services/representantes/analytics";
 import { useVendasRepresentante } from "@/hooks/use-dashboard-data";
-import {
-  formatBRL,
-  formatInt,
-  formatPct,
-} from "@/lib/format";
+import { formatBRL, formatInt } from "@/lib/format";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -35,6 +31,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { DashboardCard } from "./dashboard-card";
 import { KpiCard } from "./kpi-card";
+import { LoadingIndicator } from "./loading-indicator";
+import { pctShareCell } from "./pct-badge";
 import { RepresentanteCombobox } from "./representante-select";
 import { metricaLabel } from "./tipmov-toggle";
 import { TabelaGraficoCard, GraficoCard } from "./panel-cards";
@@ -43,7 +41,7 @@ import { ChartAnoMes, CHART_COLORS } from "./charts";
 
 const brlCell = (v: unknown) => formatBRL(Number(v));
 const intCell = (v: unknown) => formatInt(Number(v));
-const pctCell = (v: unknown) => formatPct(Number(v));
+const pctCell = pctShareCell;
 
 interface AnoRow {
   ano: number;
@@ -60,6 +58,7 @@ interface UFRow {
 }
 interface TopRow {
   pos: number;
+  codigo: number;
   nome: string;
   qtd: number;
   total: number;
@@ -98,6 +97,9 @@ export function TelaRepresentante({
   );
   const carregando = loading || !data;
 
+  // Contexto base do drill-down (notas do representante selecionado).
+  const baseCtxRep = { tipmov, meses, codvend: codvend ?? undefined };
+
   const anoRows = useMemo<AnoRow[]>(() => toAnoRows(data?.ano ?? []), [data]);
   const ufRows = useMemo<UFRow[]>(() => toUFRows(data?.uf ?? []), [data]);
   const clientesRows = useMemo<TopRow[]>(
@@ -123,6 +125,7 @@ export function TelaRepresentante({
 
   return (
     <div className="flex h-full flex-col gap-6">
+      <LoadingIndicator show={codvend != null && loading} />
       <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-lg font-semibold tracking-tight">
@@ -200,6 +203,10 @@ export function TelaRepresentante({
                   categoryKey="ano"
                   series={[{ key: "total", label: metrica, color: CHART_COLORS[0] }]}
                   csvFileName={`vendas_${repSelecionado?.nome ?? codvend}`}
+                  montarDetalhe={(r) => ({
+                    titulo: `${repSelecionado?.nome ?? ""} · ${r.ano}`,
+                    ctx: { ...baseCtxRep, ano: r.ano },
+                  })}
                   fill
                 />
               )}
@@ -249,6 +256,10 @@ export function TelaRepresentante({
                       series={[{ key: "total", label: "Total", color: CHART_COLORS[1] }]}
                       horizontal
                       csvFileName={`uf_${repSelecionado?.nome ?? codvend}`}
+                      montarDetalhe={(r) => ({
+                        titulo: `UF ${r.uf}`,
+                        ctx: { ...baseCtxRep, uf: r.uf, todosAnos: true },
+                      })}
                     />
 
                     <TabelaGraficoCard<TopRow>
@@ -261,6 +272,10 @@ export function TelaRepresentante({
                       series={[{ key: "total", label: "Total", color: CHART_COLORS[0] }]}
                       horizontal
                       csvFileName={`clientes_${repSelecionado?.nome ?? codvend}`}
+                      montarDetalhe={(r) => ({
+                        titulo: r.nome,
+                        ctx: { ...baseCtxRep, codparc: r.codigo, todosAnos: true },
+                      })}
                     />
                   </>
                 )}
@@ -279,6 +294,10 @@ export function TelaRepresentante({
                       series={[{ key: "total", label: "Total", color: CHART_COLORS[3] }]}
                       horizontal
                       csvFileName={`produtos_${repSelecionado?.nome ?? codvend}`}
+                      montarDetalhe={(r) => ({
+                        titulo: r.nome,
+                        ctx: { ...baseCtxRep, codprod: r.codigo, todosAnos: true },
+                      })}
                     />
                   )}
                 </div>
@@ -326,6 +345,7 @@ function toTopRows(items: TopItem[]): TopRow[] {
   const tot = items.reduce((s, d) => s + d.total, 0);
   return items.map((it, i) => ({
     pos: i + 1,
+    codigo: it.codigo,
     nome: it.nome,
     qtd: it.qtd,
     total: it.total,

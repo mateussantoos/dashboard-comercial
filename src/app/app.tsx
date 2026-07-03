@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { useSankhya } from "@/contexts/sankhya-context";
 import type { TipMov } from "@/services/representantes/types";
-import { useRepresentantes } from "@/hooks/use-dashboard-data";
+import { useGerencial, useRepresentantes } from "@/hooks/use-dashboard-data";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 
 import { Sidebar, type Tela } from "@/components/dashboard/sidebar";
@@ -32,6 +32,10 @@ function App() {
   const [anoAtual, setAnoAtual] = useState(anoCorrente);
   const [anoAnterior, setAnoAnterior] = useState(anoCorrente - 1);
   const [meses, setMeses] = useState<number[]>(TODOS_MESES);
+
+  // Dados da Visão Gerencial ficam no App: carregam uma vez e sobrevivem à
+  // troca de telas (evita recarregar/cancelar ao navegar e voltar).
+  const gerencial = useGerencial(anoAtual, anoAnterior, meses);
 
   // Dentro do Sankhya, expande o componente para tela cheia (no-op no dev).
   useEffect(() => {
@@ -66,6 +70,11 @@ function App() {
             anoAtual={anoAtual}
             anoAnterior={anoAnterior}
             meses={meses}
+            data={gerencial.data}
+            pronto={gerencial.pronto}
+            loading={gerencial.loading}
+            error={gerencial.error}
+            onRetry={gerencial.retry}
           />
         ) : tela === "comparar" ? (
           <TelaComparar

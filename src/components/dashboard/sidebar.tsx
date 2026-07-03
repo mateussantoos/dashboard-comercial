@@ -10,6 +10,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { TipMov } from "@/services/representantes/types";
 import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/components/ui/toast";
 import {
   Select,
   SelectContent,
@@ -61,6 +62,9 @@ export function Sidebar({
   onMesesChange,
   modoDemo = false,
 }: SidebarProps) {
+  const { toast } = useToast();
+  // A Visão Gerencial é consolidada em faturamento — base de cálculo travada.
+  const tipmovBloqueado = tela === "gerencial";
   return (
     <aside
       className={cn(
@@ -131,8 +135,16 @@ export function Sidebar({
               Base de cálculo
             </label>
             <TipMovToggle
-              value={tipmov}
+              value={tipmovBloqueado ? "V" : tipmov}
               onChange={onTipmovChange}
+              disabled={tipmovBloqueado}
+              onDisabledClick={() =>
+                toast("Visão Gerencial usa apenas faturamento", {
+                  description:
+                    "Os dados consolidados são baseados em notas faturadas. Troque para outra tela para analisar pedidos.",
+                  variant: "info",
+                })
+              }
               className="w-full"
             />
           </div>

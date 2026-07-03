@@ -4,8 +4,10 @@ import * as Q from "./queries";
 import * as M from "./mock";
 import type {
   ComparativoPonto,
+  DrillContexto,
   LinhaComparativa,
   PeriodoSnapshot,
+  RegistroDetalhe,
   Representante,
   SnapshotAno,
   TipMov,
@@ -53,8 +55,26 @@ function toNumber(value: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-async function run(query: Q.Query): Promise<Record<string, unknown>[]> {
-  return sankhyaService.executeQuery(query.sql, query.params);
+/**
+ * Executa uma consulta com nova tentativa automática. A primeira execução de
+ * uma consulta "fria" no Sankhya pode estourar o tempo limite; a segunda,
+ * com o plano já em cache, costuma responder rápido — foi o que antes exigia
+ * navegar entre telas para "forçar" o recarregamento.
+ */
+async function run(
+  query: Q.Query,
+  tentativas = 2
+): Promise<Record<string, unknown>[]> {
+  let ultimoErro: unknown;
+  for (let i = 0; i < tentativas; i++) {
+    try {
+      return await sankhyaService.executeQuery(query.sql, query.params);
+    } catch (e) {
+      ultimoErro = e;
+      if (i < tentativas - 1) await delay(600);
+    }
+  }
+  throw ultimoErro;
 }
 
 export async function getRepresentantes(): Promise<Representante[]> {
@@ -267,4 +287,38 @@ export async function getComparativoMensal(
       ordem: mes,
     });
   });
+}
+
+// --- Drill-down: registros que compõem um dado agregado ---
+
+/** Tamanho da página e teto de segurança do drill-down paginado. */
+const PAGINA_DETALHE = 5000;
+const MAX_DETALHE = 100000;
+
+function mapRegistro(r: Record<string, unknown>): RegistroDetalhe {
+  return {
+    id: toNumber(r.NUNOTA) || String(r.NUNOTA ?? ""),
+    descricao: String(r.CLIENTE ?? "").trim(),
+    valor: toNumber(r.VALOR),
+    periodo: String(r.DATA ?? "").trim(),
+    extra:
+      String(r.VENDEDOR ?? "").trim() || String(r.UF ?? "").trim() || undefined,
+  };
+}
+
+export async function getRegistrosDetalhe(
+  ctx: DrillContexto
+): Promise<RegistroDetalhe[]> {
+  if (useMock()) {
+    await delay(280);
+    return M.mockRegistrosDetalhe(ctx);
+  }
+  // Pagina via OFFSET/FETCH até esgotar (o Sankhya limita ~5000 linhas/consulta).
+  const registros: RegistroDetalhe[] = [];
+  for (let offset = 0; offset < MAX_DETALHE; offset += PAGINA_DETALHE) {
+    const rows = await run(Q.registrosDetalhe(ctx, offset, PAGINA_DETALHE));
+    registros.push(...rows.map(mapRegistro));
+    if (rows.length < PAGINA_DETALHE) break;
+  }
+  return registros;
 }

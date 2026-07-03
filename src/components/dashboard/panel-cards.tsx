@@ -2,7 +2,6 @@ import * as React from "react";
 import { BarChart3, Download, Image, Maximize2, Table } from "lucide-react";
 
 import { downloadCSV } from "@/lib/csv";
-import { formatBRL } from "@/lib/format";
 import { exportarNodeJpeg } from "@/lib/export-image";
 import { useColumnConfig } from "@/hooks/use-column-config";
 import { useLocalStorage } from "@/hooks/use-local-storage";
@@ -19,8 +18,13 @@ import { GenericBarChart, type SerieBar } from "./generic-bar-chart";
 import { ToolbarButton } from "./toolbar-button";
 import { ColumnSettings } from "./column-settings";
 import { DetailDialog, type CampoDetalhe, type RegistroDetalhe } from "./detail-dialog";
+import { getRegistrosDetalhe } from "@/services/representantes/repository";
+import type { DrillContexto } from "@/services/representantes/types";
 
 export { ToolbarButton };
+
+/** Descreve como montar o detalhamento (drill) de uma linha clicada. */
+export type MontarDetalhe<T> = (row: T) => { titulo: string; ctx: DrillContexto };
 
 interface TabelaGraficoCardProps<T> {
   title: React.ReactNode;
@@ -39,6 +43,11 @@ interface TabelaGraficoCardProps<T> {
   defaultView?: "tabela" | "grafico";
   /** Quando true, o card cresce via flex para preencher o container pai. */
   fill?: boolean;
+  /**
+   * Monta o drill-down da linha clicada: retorna o título e o contexto usado
+   * para buscar as notas que compõem exatamente aquele dado.
+   */
+  montarDetalhe?: MontarDetalhe<T>;
 }
 
 /**
@@ -62,11 +71,43 @@ export function TabelaGraficoCard<T>({
   bodyHeight,
   defaultView = "tabela",
   fill = false,
+  montarDetalhe,
 }: TabelaGraficoCardProps<T>) {
   const [view, setView] = React.useState<"tabela" | "grafico">(defaultView);
   const [maxOpen, setMaxOpen] = React.useState(false);
-  const [detalhe, setDetalhe] = React.useState<T | null>(null);
+  const [detalheRow, setDetalheRow] = React.useState<T | null>(null);
+  const [detalheReq, setDetalheReq] = React.useState<{
+    titulo: string;
+    ctx: DrillContexto;
+  } | null>(null);
+  const [registros, setRegistros] = React.useState<RegistroDetalhe[]>([]);
+  const [loadingReg, setLoadingReg] = React.useState(false);
   const innerRef = React.useRef<HTMLDivElement>(null);
+
+  function abrirDetalhe(row: T) {
+    setDetalheRow(row);
+    setDetalheReq(montarDetalhe ? montarDetalhe(row) : null);
+  }
+
+  function fecharDetalhe(aberto: boolean) {
+    if (aberto) return;
+    setDetalheRow(null);
+    setDetalheReq(null);
+    setRegistros([]);
+  }
+
+  React.useEffect(() => {
+    if (!detalheRow || !detalheReq) return;
+    let cancel = false;
+    setLoadingReg(true);
+    getRegistrosDetalhe(detalheReq.ctx)
+      .then((r) => !cancel && setRegistros(r))
+      .catch(() => !cancel && setRegistros([]))
+      .finally(() => !cancel && setLoadingReg(false));
+    return () => {
+      cancel = true;
+    };
+  }, [detalheRow, detalheReq]);
 
   const sk = storageKey ?? csvFileName;
 
@@ -106,46 +147,9 @@ export function TabelaGraficoCard<T>({
     }));
   }
 
-  /**
-   * Converte todas as linhas do card em registros detalhados para que o
-   * DetailDialog possa montar: KPIs + gráfico de linhas + tabela completa.
-   */
-  function buildRegistros(): RegistroDetalhe[] {
-    // Usa a primeira série numérica como valor principal
-    const valorKey = series[0]?.key as keyof T | undefined;
-    if (!valorKey) return [];
-
-    return sortedData.map((row, i) => {
-      const rec = row as Record<string, unknown>;
-      const desc = String(rec[categoryKey] ?? `#${i + 1}`);
-      const valor = Number(rec[valorKey as string] ?? 0);
-
-      // Tenta usar o categoryKey como período; se for muito curto (UF, sigla) usa o index
-      const periodo = desc;
-
-      // Extra: junta outras séries como informação complementar
-      const extras = series
-        .slice(1)
-        .map((s) => {
-          const v = Number(rec[s.key] ?? 0);
-          return v ? `${s.label}: ${formatBRL(v)}` : null;
-        })
-        .filter(Boolean);
-
-      return {
-        id: `${desc}-${i}`,
-        descricao: desc,
-        valor,
-        periodo,
-        extra: extras.length ? extras.join(" | ") : undefined,
-      };
-    });
-  }
-
-  const detalheTitulo = detalhe
-    ? String((detalhe as Record<string, unknown>)[categoryKey] ?? "Detalhe")
+  const detalheTituloFallback = detalheRow
+    ? String((detalheRow as Record<string, unknown>)[categoryKey] ?? "Detalhe")
     : "";
-
 
   const tabela = (d: T[] = sortedData) => (
     <GenericTable
@@ -153,7 +157,7 @@ export function TabelaGraficoCard<T>({
       colunas={colunasVisiveis}
       rowKey={rowKey}
       showFooter={showFooter}
-      onRowClick={setDetalhe}
+      onRowClick={abrirDetalhe}
       sortKey={sortState.key}
       sortDir={sortState.dir}
       onSort={handleSort}
@@ -166,7 +170,7 @@ export function TabelaGraficoCard<T>({
       categoryKey={categoryKey}
       series={series}
       horizontal={horizontal}
-      onBarClick={(row) => setDetalhe(row as T)}
+      onBarClick={(row) => abrirDetalhe(row as T)}
     />
   );
 
@@ -231,19 +235,20 @@ export function TabelaGraficoCard<T>({
             {subtitle ? <DialogDescription>{subtitle}</DialogDescription> : null}
           </DialogHeader>
           <div className="max-h-[75vh] overflow-auto rounded-lg border bg-muted/40 p-3">
-            {view === "tabela" ? tabela() : grafico()}
+            {view === "tabela" ? tabela() : <div className="h-[60vh]">{grafico()}</div>}
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Detalhamento da linha/barra */}
+      {/* Detalhamento da linha/barra (drill-down) */}
       <DetailDialog
-        open={detalhe != null}
-        onOpenChange={(o) => !o && setDetalhe(null)}
-        title={detalheTitulo}
+        open={detalheRow != null}
+        onOpenChange={fecharDetalhe}
+        title={detalheReq?.titulo ?? detalheTituloFallback}
         subtitle="Dados que compõem esta linha"
-        campos={detalhe ? buildCampos(detalhe) : []}
-        registros={detalhe ? buildRegistros() : []}
+        campos={detalheRow ? buildCampos(detalheRow) : []}
+        registros={registros}
+        loading={loadingReg}
       />
     </>
   );

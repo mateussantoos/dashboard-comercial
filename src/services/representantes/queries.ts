@@ -1,5 +1,5 @@
 import type { SankhyaQueryParam } from "@/types/global";
-import type { PeriodoSnapshot, TipMov } from "./types";
+import type { DrillContexto, PeriodoSnapshot, TipMov } from "./types";
 
 /** Uma consulta SQL pronta com seus parâmetros tipados (padrão do boilerplate). */
 export interface Query {
@@ -23,15 +23,19 @@ function baseParams(tipmov: TipMov, codvend: number): SankhyaQueryParam[] {
 }
 
 /**
- * Filtro opcional de meses (`MONTH(DTNEG) IN (...)`). Vazio ou 12 meses = sem
- * filtro. Os números são validados como inteiros e interpolados com segurança.
+ * Filtro opcional de meses (`MONTH(DTNEG) IN (...)`).
+ * - `undefined` ou 12 meses = sem filtro (todos os meses).
+ * - `[]` (nenhum mês selecionado) = não retorna nada (`AND 1 = 0`).
+ * Os números são validados como inteiros e interpolados com segurança.
  */
 function filtroMeses(meses?: number[]): string {
-  if (!meses || meses.length === 0 || meses.length >= 12) return "";
+  if (!meses || meses.length >= 12) return "";
+  if (meses.length === 0) return "AND 1 = 0";
   const lista = meses
     .map((m) => Math.trunc(Number(m)))
     .filter((m) => m >= 1 && m <= 12);
-  if (!lista.length || lista.length >= 12) return "";
+  if (!lista.length) return "AND 1 = 0";
+  if (lista.length >= 12) return "";
   return `AND MONTH(CAB.DTNEG) IN (${lista.join(", ")})`;
 }
 
@@ -326,5 +330,87 @@ export function comparativoMensal(
       ORDER BY MES
     `,
     params: paramsComparativo(anoAtual, anoAnterior),
+  };
+}
+
+// --- Drill-down: notas que compõem um dado agregado ---
+
+/**
+ * Registros individuais (notas) que compõem o dado clicado. Aplica os filtros
+ * da dimensão presente no contexto (ano, mês, UF, vendedor, cliente, produto).
+ *
+ * Paginado via `OFFSET/FETCH` para contornar o limite de linhas por consulta
+ * do Sankhya (~5000): o repositório itera as páginas até esgotar os registros.
+ */
+export function registrosDetalhe(
+  ctx: DrillContexto,
+  offset = 0,
+  limite = 5000
+): Query {
+  const off = Math.max(0, Math.trunc(offset));
+  const lim = Math.max(1, Math.trunc(limite));
+  const params: SankhyaQueryParam[] = [];
+  let where = "CAB.TIPMOV = ? AND CAB.STATUSNOTA = 'L'";
+  params.push({ value: ctx.tipmov, type: "S" });
+
+  if (ctx.ano != null) {
+    where += " AND YEAR(CAB.DTNEG) = ?";
+    params.push({ value: ctx.ano, type: "I" });
+  } else if (
+    !ctx.todosAnos &&
+    ctx.anoAtual != null &&
+    ctx.anoAnterior != null
+  ) {
+    where += " AND YEAR(CAB.DTNEG) IN (?, ?)";
+    params.push(
+      { value: ctx.anoAtual, type: "I" },
+      { value: ctx.anoAnterior, type: "I" }
+    );
+  }
+
+  if (ctx.mes != null) {
+    where += " AND MONTH(CAB.DTNEG) = ?";
+    params.push({ value: ctx.mes, type: "I" });
+  } else {
+    const fm = filtroMeses(ctx.meses);
+    if (fm) where += ` ${fm}`;
+  }
+
+  if (ctx.uf) {
+    where += " AND UF.UF = ?";
+    params.push({ value: ctx.uf, type: "S" });
+  }
+  if (ctx.codvend != null) {
+    where += " AND CAB.CODVEND = ?";
+    params.push({ value: ctx.codvend, type: "I" });
+  }
+  if (ctx.codparc != null) {
+    where += " AND CAB.CODPARC = ?";
+    params.push({ value: ctx.codparc, type: "I" });
+  }
+  if (ctx.codprod != null) {
+    where +=
+      " AND EXISTS (SELECT 1 FROM TGFITE ITE WHERE ITE.NUNOTA = CAB.NUNOTA AND ITE.CODPROD = ?)";
+    params.push({ value: ctx.codprod, type: "I" });
+  }
+
+  return {
+    sql: `
+      SELECT CAB.NUNOTA AS NUNOTA,
+             CONVERT(VARCHAR(10), CAB.DTNEG, 120) AS DATA,
+             RTRIM(PAR.NOMEPARC) AS CLIENTE,
+             RTRIM(VEN.APELIDO) AS VENDEDOR,
+             UF.UF AS UF,
+             CAB.VLRNOTA AS VALOR
+      FROM TGFCAB CAB
+      INNER JOIN TGFPAR PAR ON PAR.CODPARC = CAB.CODPARC
+      LEFT JOIN TGFVEN VEN ON VEN.CODVEND = CAB.CODVEND
+      LEFT JOIN TSICID CID ON CID.CODCID = PAR.CODCID
+      LEFT JOIN TSIUFS UF ON UF.CODUF = CID.UF
+      WHERE ${where}
+      ORDER BY CAB.DTNEG DESC
+      OFFSET ${off} ROWS FETCH NEXT ${lim} ROWS ONLY
+    `,
+    params,
   };
 }
