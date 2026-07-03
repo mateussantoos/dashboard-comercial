@@ -8,6 +8,7 @@ import { useLocalStorage } from "@/hooks/use-local-storage";
 import { Sidebar, type Tela } from "@/components/dashboard/sidebar";
 import { TelaGerencial } from "@/components/dashboard/tela-gerencial";
 import { TelaRepresentante } from "@/components/dashboard/tela-representante";
+import { TelaComparar } from "@/components/dashboard/tela-comparar";
 
 const MODO_DEMO =
   import.meta.env.DEV && typeof window.executeQuery !== "function";
@@ -41,7 +42,7 @@ function App() {
   }, [sankhya]);
 
   return (
-    <div className="flex min-h-screen w-full bg-background">
+    <div className="flex h-screen w-full overflow-hidden bg-background">
       <Sidebar
         tela={tela}
         onTelaChange={setTela}
@@ -59,12 +60,21 @@ function App() {
         modoDemo={MODO_DEMO}
       />
 
-      <main className="min-w-0 flex-1 overflow-x-hidden p-4 sm:p-6">
+      <main className="flex min-w-0 flex-1 flex-col overflow-y-auto p-4 sm:p-6">
         {tela === "gerencial" ? (
           <TelaGerencial
             anoAtual={anoAtual}
             anoAnterior={anoAnterior}
             meses={meses}
+          />
+        ) : tela === "comparar" ? (
+          <TelaComparar
+            representantes={representantes}
+            loadingReps={loadingReps}
+            tipmov={tipmov}
+            meses={meses}
+            anoAtual={anoAtual}
+            anoAnterior={anoAnterior}
           />
         ) : (
           <TelaRepresentante

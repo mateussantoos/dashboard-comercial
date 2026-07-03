@@ -45,7 +45,6 @@ export function GenericBarChart({
   categoryKey,
   series,
   horizontal = false,
-  height = 300,
   onBarClick,
 }: GenericBarChartProps) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -59,8 +58,7 @@ export function GenericBarChart({
   return (
     <ChartContainer
       config={config}
-      className="aspect-auto w-full"
-      style={{ height }}
+      className="aspect-auto h-full w-full"
     >
       <BarChart
         data={data}

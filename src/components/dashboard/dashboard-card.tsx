@@ -24,6 +24,11 @@ interface DashboardCardProps
   bodyHeight?: number;
   /** Ref do painel interno — usado para exportar o conteúdo como imagem. */
   innerRef?: React.Ref<HTMLDivElement>;
+  /**
+   * Quando true, o card inteiro cresce via flex-1 para preencher o container pai.
+   * Usado na visão gerencial para que os cards preencham a viewport.
+   */
+  fill?: boolean;
 }
 
 /**
@@ -40,6 +45,7 @@ export function DashboardCard({
   innerClassName,
   bodyHeight,
   innerRef,
+  fill = false,
   children,
   ...props
 }: DashboardCardProps) {
@@ -47,11 +53,12 @@ export function DashboardCard({
     <section
       className={cn(
         "flex flex-col rounded-xl border bg-card p-4 shadow-sm sm:p-5",
+        fill && "flex-1 min-h-0",
         className
       )}
       {...props}
     >
-      <header className="mb-3 flex items-start justify-between gap-3">
+      <header className="mb-3 flex items-start justify-between gap-3 shrink-0">
         <div className="min-w-0 flex-1">
           <h3 className="truncate text-sm font-semibold text-foreground">
             {title}
@@ -76,8 +83,8 @@ export function DashboardCard({
         ref={innerRef}
         style={bodyHeight ? { height: bodyHeight } : undefined}
         className={cn(
-          "flex-1 rounded-lg border border-border/60 bg-muted/70 p-3 sm:p-4",
-          bodyHeight && "overflow-auto",
+          "rounded-lg border border-border/60 bg-muted/70 p-3 sm:p-4",
+          bodyHeight ? "overflow-auto" : "flex-1 min-h-0 overflow-auto",
           innerClassName
         )}
       >

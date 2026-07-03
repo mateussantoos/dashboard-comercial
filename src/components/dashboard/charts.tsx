@@ -50,7 +50,7 @@ export function ChartVendasAno({
   } satisfies ChartConfig;
 
   return (
-    <ChartContainer config={config} className="aspect-auto h-[280px] w-full">
+    <ChartContainer config={config} className="aspect-auto h-full w-full">
       <BarChart data={data} margin={{ left: 8, right: 12, top: 8 }}>
         <CartesianGrid vertical={false} />
         <XAxis
@@ -98,7 +98,7 @@ export function ChartAnoMes({ data }: { data: VendaAnoMes[] }) {
   ) as ChartConfig;
 
   return (
-    <ChartContainer config={config} className="aspect-auto h-[300px] w-full">
+    <ChartContainer config={config} className="aspect-auto h-full w-full">
       <LineChart data={rows} margin={{ left: 8, right: 12, top: 8 }}>
         <CartesianGrid vertical={false} />
         <XAxis dataKey="mes" tickLine={false} axisLine={false} tickMargin={8} />
@@ -156,7 +156,7 @@ export function ChartComparativo({
   ) as ChartConfig;
 
   return (
-    <ChartContainer config={config} className="aspect-auto h-[320px] w-full">
+    <ChartContainer config={config} className="aspect-auto h-full w-full">
       <LineChart data={rows} margin={{ left: 8, right: 12, top: 8 }}>
         <CartesianGrid vertical={false} />
         <XAxis dataKey="ano" tickLine={false} axisLine={false} tickMargin={8} />
@@ -190,7 +190,7 @@ export function ChartUF({ data }: { data: VendaUF[] }) {
   } satisfies ChartConfig;
 
   return (
-    <ChartContainer config={config} className="aspect-auto h-[320px] w-full">
+    <ChartContainer config={config} className="aspect-auto h-full w-full">
       <BarChart
         data={data}
         layout="vertical"

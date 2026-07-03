@@ -1,4 +1,5 @@
 import {
+  GitCompareArrows,
   LayoutDashboard,
   PanelLeftClose,
   PanelLeftOpen,
@@ -19,7 +20,7 @@ import {
 import { TipMovToggle } from "./tipmov-toggle";
 import { MesesFilter } from "./meses-filter";
 
-export type Tela = "gerencial" | "representante";
+export type Tela = "gerencial" | "representante" | "comparar";
 
 interface SidebarProps {
   tela: Tela;
@@ -41,6 +42,7 @@ interface SidebarProps {
 const NAV: { id: Tela; label: string; icon: typeof LayoutDashboard }[] = [
   { id: "gerencial", label: "Visão Gerencial", icon: LayoutDashboard },
   { id: "representante", label: "Por Representante", icon: UserRound },
+  { id: "comparar", label: "Comparar", icon: GitCompareArrows },
 ];
 
 export function Sidebar({

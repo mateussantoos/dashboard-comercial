@@ -37,10 +37,9 @@ import { DashboardCard } from "./dashboard-card";
 import { KpiCard } from "./kpi-card";
 import { RepresentanteCombobox } from "./representante-select";
 import { metricaLabel } from "./tipmov-toggle";
-import { TabelaGraficoCard, GraficoCard, CARD_BODY_HEIGHT } from "./panel-cards";
+import { TabelaGraficoCard, GraficoCard } from "./panel-cards";
 import type { Coluna } from "./generic-table";
 import { ChartAnoMes, CHART_COLORS } from "./charts";
-import { CompararTab } from "./comparar-tab";
 
 const brlCell = (v: unknown) => formatBRL(Number(v));
 const intCell = (v: unknown) => formatInt(Number(v));
@@ -123,8 +122,8 @@ export function TelaRepresentante({
   }, [anoRows, metrica]);
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex h-full flex-col gap-6">
+      <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-lg font-semibold tracking-tight">
             Por Representante
@@ -148,7 +147,7 @@ export function TelaRepresentante({
         <ErroBox message={error} />
       ) : (
         <>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid shrink-0 grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <KpiCard
               title={`Total de ${metrica.toLowerCase()}`}
               value={resumo ? formatBRL(resumo.totalPeriodo) : ""}
@@ -180,15 +179,14 @@ export function TelaRepresentante({
             />
           </div>
 
-          <Tabs defaultValue="geral" className="gap-4">
-            <TabsList className="flex-wrap">
+          <Tabs defaultValue="geral" className="flex flex-1 flex-col gap-4 min-h-0">
+            <TabsList className="shrink-0 flex-wrap">
               <TabsTrigger value="geral">Visão Geral</TabsTrigger>
               <TabsTrigger value="anomes">Ano × Mês</TabsTrigger>
-              <TabsTrigger value="comparar">Comparar</TabsTrigger>
               <TabsTrigger value="rankings">UF &amp; Rankings</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="geral">
+            <TabsContent value="geral" className="flex-1 min-h-0 flex flex-col">
               {carregando ? (
                 <CardSkeleton title={`${metrica} por ano`} />
               ) : (
@@ -202,11 +200,12 @@ export function TelaRepresentante({
                   categoryKey="ano"
                   series={[{ key: "total", label: metrica, color: CHART_COLORS[0] }]}
                   csvFileName={`vendas_${repSelecionado?.nome ?? codvend}`}
+                  fill
                 />
               )}
             </TabsContent>
 
-            <TabsContent value="anomes">
+            <TabsContent value="anomes" className="flex-1 min-h-0 flex flex-col">
               {carregando ? (
                 <CardSkeleton title="Sazonalidade — Ano × Mês" />
               ) : (
@@ -215,6 +214,7 @@ export function TelaRepresentante({
                   subtitle={`Comparativo mensal dos últimos ${anosMes} anos`}
                   jpgFileName={`sazonalidade_${repSelecionado?.nome ?? codvend}`}
                   action={<JanelaAnosSelect value={anosMes} onChange={setAnosMes} />}
+                  fill
                 >
                   {data.anoMes.length ? (
                     <ChartAnoMes data={data.anoMes} />
@@ -225,15 +225,7 @@ export function TelaRepresentante({
               )}
             </TabsContent>
 
-            <TabsContent value="comparar">
-              <CompararTab
-                representantes={representantes}
-                tipmov={tipmov}
-                loadingReps={loadingReps}
-              />
-            </TabsContent>
-
-            <TabsContent value="rankings">
+            <TabsContent value="rankings" className="flex-1 min-h-0 overflow-auto">
               <div className="grid gap-4 lg:grid-cols-2">
                 {carregando ? (
                   <>
@@ -366,7 +358,7 @@ function JanelaAnosSelect({
 
 function CardSkeleton({ title }: { title: string }) {
   return (
-    <DashboardCard title={title} bodyHeight={CARD_BODY_HEIGHT}>
+    <DashboardCard title={title} fill>
       <Skeleton className="h-full w-full" />
     </DashboardCard>
   );
@@ -374,13 +366,15 @@ function CardSkeleton({ title }: { title: string }) {
 
 function EstadoVazio() {
   return (
-    <div className="rounded-xl border bg-card p-12 text-center shadow-sm">
-      <BarChart3 className="mx-auto mb-3 size-10 text-muted-foreground/50" />
-      <h2 className="text-lg font-medium">Selecione um representante</h2>
-      <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-        Escolha um representante no seletor acima para visualizar os indicadores
-        e gráficos de vendas ao longo dos anos.
-      </p>
+    <div className="flex flex-1 items-center justify-center rounded-xl border bg-card p-12 text-center shadow-sm">
+      <div>
+        <BarChart3 className="mx-auto mb-3 size-10 text-muted-foreground/50" />
+        <h2 className="text-lg font-medium">Selecione um representante</h2>
+        <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
+          Escolha um representante no seletor acima para visualizar os indicadores
+          e gráficos de vendas ao longo dos anos.
+        </p>
+      </div>
     </div>
   );
 }

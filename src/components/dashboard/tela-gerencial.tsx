@@ -8,7 +8,7 @@ import type {
 import { useGerencial } from "@/hooks/use-dashboard-data";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DashboardCard } from "./dashboard-card";
-import { TabelaGraficoCard, CARD_BODY_HEIGHT } from "./panel-cards";
+import { TabelaGraficoCard } from "./panel-cards";
 import type { Coluna } from "./generic-table";
 import type { SerieBar } from "./generic-bar-chart";
 import { CHART_COLORS } from "./charts";
@@ -87,6 +87,8 @@ export function TelaGerencial({
   const colsComp = colunasComparativo(anoAtual, anoAnterior);
   const serieComp = serieComparativo(anoAtual, anoAnterior);
 
+  const subtituloAnos = `${anoAnterior} × ${anoAtual}`;
+
   const snapshots: { titulo: string; data: SnapshotAno[] }[] = data
     ? [
         { titulo: "Ontem", data: data.ontem },
@@ -97,8 +99,8 @@ export function TelaGerencial({
     : [];
 
   return (
-    <div className="space-y-5">
-      <div>
+    <div className="flex h-full flex-col gap-5">
+      <div className="shrink-0">
         <h2 className="text-lg font-semibold tracking-tight">
           Visão Gerencial
         </h2>
@@ -107,17 +109,17 @@ export function TelaGerencial({
         </p>
       </div>
 
-      {/* Recortes por ano */}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {/* Recortes por ano — preenche proporcionalmente */}
+      <div className="grid flex-1 gap-4 sm:grid-cols-2 xl:grid-cols-4" style={{ minHeight: 0 }}>
         {carregando
           ? ["Ontem", "Hoje", "Mês atual", "Ano"].map((t) => (
-              <CardSkeleton key={t} title={t} />
+              <CardSkeleton key={t} title={t} subtitle={`Vendas por ano · ${subtituloAnos}`} />
             ))
           : snapshots.map((s) => (
               <TabelaGraficoCard<SnapshotAno>
                 key={s.titulo}
                 title={s.titulo}
-                subtitle="Vendas por ano"
+                subtitle={`Vendas por ano · ${subtituloAnos}`}
                 data={s.data}
                 colunas={colunasSnapshot}
                 rowKey={(r) => r.ano}
@@ -125,23 +127,24 @@ export function TelaGerencial({
                 series={serieSnapshot}
                 csvFileName={`gerencial_${s.titulo.toLowerCase()}`}
                 storageKey={`ger_snap_${s.titulo}`}
+                fill
               />
             ))}
       </div>
 
-      {/* UF, Representantes e Mensal (linha inferior — 3 colunas, como no BI) */}
-      <div className="grid gap-4 lg:grid-cols-3">
+      {/* UF, Representantes e Mensal (linha inferior — 3 colunas) */}
+      <div className="grid flex-1 gap-4 lg:grid-cols-3" style={{ minHeight: 0 }}>
         {carregando ? (
           <>
-            <CardSkeleton title="Vendas por UF" />
-            <CardSkeleton title="Vendas por representante" />
-            <CardSkeleton title="Vendas por mês" />
+            <CardSkeleton title="Vendas por UF" subtitle={subtituloAnos} />
+            <CardSkeleton title="Vendas por representante" subtitle={subtituloAnos} />
+            <CardSkeleton title="Vendas por mês" subtitle={subtituloAnos} />
           </>
         ) : (
           <>
             <TabelaGraficoCard<LinhaComparativa>
               title="Vendas por UF"
-              subtitle="Ranking de estados"
+              subtitle={`Ranking de estados · ${subtituloAnos}`}
               data={data.uf}
               colunas={rotuloComo(colsComp, "UF")}
               rowKey={linhaKey}
@@ -150,10 +153,11 @@ export function TelaGerencial({
               horizontal
               csvFileName="gerencial_uf"
               storageKey="ger_uf"
+              fill
             />
             <TabelaGraficoCard<LinhaComparativa>
               title="Vendas por representante"
-              subtitle="Evolução por representante"
+              subtitle={`Evolução por representante · ${subtituloAnos}`}
               data={data.representantes}
               colunas={rotuloComo(colsComp, "Representante")}
               rowKey={linhaKey}
@@ -162,10 +166,11 @@ export function TelaGerencial({
               horizontal
               csvFileName="gerencial_representantes"
               storageKey="ger_representantes"
+              fill
             />
             <TabelaGraficoCard<LinhaComparativa>
               title="Vendas por mês"
-              subtitle="Sazonalidade mensal"
+              subtitle={`Sazonalidade mensal · ${subtituloAnos}`}
               data={data.mensal}
               colunas={rotuloComo(colsComp, "Mês")}
               rowKey={linhaKey}
@@ -173,6 +178,7 @@ export function TelaGerencial({
               series={serieComp}
               csvFileName="gerencial_mensal"
               storageKey="ger_mensal"
+              fill
             />
           </>
         )}
@@ -181,9 +187,9 @@ export function TelaGerencial({
   );
 }
 
-function CardSkeleton({ title }: { title: string }) {
+function CardSkeleton({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
-    <DashboardCard title={title} bodyHeight={CARD_BODY_HEIGHT}>
+    <DashboardCard title={title} subtitle={subtitle} fill>
       <Skeleton className="h-full w-full" />
     </DashboardCard>
   );
