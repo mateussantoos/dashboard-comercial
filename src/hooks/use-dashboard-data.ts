@@ -6,11 +6,13 @@ import {
   getComparativoRepresentantesGerencial,
   getComparativoUF,
   getRepresentantes,
+  getResumoAteData,
   getSnapshotAno,
   getTopClientes,
   getTopProdutos,
   getVendasAno,
   getVendasAnoMes,
+  getVendasPorDia,
   getVendasUF,
 } from "@/services/representantes/repository";
 import type {
@@ -22,6 +24,7 @@ import type {
   TopItem,
   VendaAno,
   VendaAnoMes,
+  VendaDia,
   VendaUF,
 } from "@/services/representantes/types";
 
@@ -59,12 +62,18 @@ export interface VendasRepresentante {
   uf: VendaUF[];
   topClientes: TopItem[];
   topProdutos: TopItem[];
+  /** YTD (até a data de hoje) do ano anterior e atual, para comparação justa. */
+  ateData: VendaAno[];
+  /** Vendas dia a dia (até a data de hoje) do ano anterior e atual. */
+  dia: VendaDia[];
 }
 
 /** Todos os conjuntos de dados de um representante para o dashboard. */
 export function useVendasRepresentante(
   codvend: number | null,
   tipmov: TipMov,
+  anoAtual: number,
+  anoAnterior: number,
   anos = 4,
   meses: number[] = []
 ) {
@@ -90,10 +99,12 @@ export function useVendasRepresentante(
       getVendasUF(codvend, tipmov, meses),
       getTopClientes(codvend, tipmov, 10, meses),
       getTopProdutos(codvend, tipmov, 10, meses),
+      getResumoAteData(codvend, anoAtual, anoAnterior),
+      getVendasPorDia(codvend, anoAtual, anoAnterior),
     ])
-      .then(([ano, anoMes, uf, topClientes, topProdutos]) => {
+      .then(([ano, anoMes, uf, topClientes, topProdutos, ateData, dia]) => {
         if (cancelado) return;
-        setData({ ano, anoMes, uf, topClientes, topProdutos });
+        setData({ ano, anoMes, uf, topClientes, topProdutos, ateData, dia });
       })
       .catch((e) => {
         if (cancelado) return;
@@ -106,7 +117,7 @@ export function useVendasRepresentante(
       cancelado = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [codvend, tipmov, anos, chaveMeses]);
+  }, [codvend, tipmov, anoAtual, anoAnterior, anos, chaveMeses]);
 
   return { data, loading, error };
 }

@@ -10,6 +10,7 @@ import type {
   TopItem,
   VendaAno,
   VendaAnoMes,
+  VendaDia,
   VendaUF,
 } from "./types";
 
@@ -148,6 +149,81 @@ export function mockVendasAnoMes(
   const anoAtual = now().getFullYear();
   const corte = anoAtual - Math.abs(anos) + 1;
   return hist.filter((l) => l.ano >= corte && incluiMes(meses, l.mes));
+}
+
+/** YTD (até a data de hoje) do ano atual e anterior — comparação justa. */
+export function mockResumoAteData(
+  codvend: number,
+  anoAtual: number,
+  anoAnterior: number
+): VendaAno[] {
+  const hist = historicoMensal(codvend, "V");
+  const hoje = now();
+  const mesAtual = hoje.getMonth() + 1;
+  const diaAtual = hoje.getDate();
+  const diasNoMes = new Date(hoje.getFullYear(), mesAtual, 0).getDate();
+  const fracMes = diaAtual / diasNoMes;
+
+  const acumula = (ano: number): VendaAno => {
+    let total = 0;
+    let qtd = 0;
+    for (const l of hist) {
+      if (l.ano !== ano) continue;
+      if (l.mes < mesAtual) {
+        total += l.total;
+        qtd += l.qtd;
+      } else if (l.mes === mesAtual) {
+        total += l.total * fracMes;
+        qtd += Math.round(l.qtd * fracMes);
+      }
+    }
+    return { ano, total: Math.round(total), qtd };
+  };
+
+  return [acumula(anoAnterior), acumula(anoAtual)];
+}
+
+/**
+ * Vendas dia a dia (até a data de hoje) do ano atual e anterior. Distribui o
+ * total mensal do mock pelos dias com ruído determinístico.
+ */
+export function mockVendasPorDia(
+  codvend: number,
+  anoAtual: number,
+  anoAnterior: number
+): VendaDia[] {
+  const hist = historicoMensal(codvend, "V");
+  const hoje = now();
+  const mesAtual = hoje.getMonth() + 1;
+  const diaAtual = hoje.getDate();
+  const rand = rng(codvend * 60013);
+  const linhas: VendaDia[] = [];
+
+  for (const ano of [anoAnterior, anoAtual]) {
+    for (const l of hist) {
+      if (l.ano !== ano || l.mes > mesAtual) continue;
+      const diasNoMes = new Date(ano, l.mes, 0).getDate();
+      const ultimoDia =
+        l.mes === mesAtual ? Math.min(diaAtual, diasNoMes) : diasNoMes;
+
+      const pesos: number[] = [];
+      for (let d = 1; d <= ultimoDia; d++) pesos.push(0.5 + rand());
+      const soma = pesos.reduce((s, p) => s + p, 0) || 1;
+
+      for (let d = 1; d <= ultimoDia; d++) {
+        linhas.push({
+          ano,
+          mes: l.mes,
+          dia: d,
+          total: Math.round((l.total * pesos[d - 1]) / soma),
+        });
+      }
+    }
+  }
+
+  return linhas.sort(
+    (a, b) => a.ano - b.ano || a.mes - b.mes || a.dia - b.dia
+  );
 }
 
 export function mockVendasAno(

@@ -142,6 +142,8 @@ function App() {
             loadingReps={loadingReps}
             tipmov={tipmov}
             meses={meses}
+            anoAtual={anoAtual}
+            anoAnterior={anoAnterior}
           />
         )}
       </main>

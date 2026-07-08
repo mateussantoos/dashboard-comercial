@@ -26,6 +26,14 @@ export interface VendaAnoMes {
   qtd: number;
 }
 
+/** Total de um representante em um dia específico (dia a dia, ano × ano). */
+export interface VendaDia {
+  ano: number;
+  mes: number;
+  dia: number;
+  total: number;
+}
+
 /** Total de um representante agrupado por UF (estado). */
 export interface VendaUF {
   uf: string;

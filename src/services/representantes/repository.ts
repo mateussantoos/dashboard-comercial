@@ -14,6 +14,7 @@ import type {
   TopItem,
   VendaAno,
   VendaAnoMes,
+  VendaDia,
   VendaUF,
 } from "./types";
 
@@ -103,6 +104,43 @@ export async function getVendasAno(
     ano: toNumber(r.ANO),
     total: toNumber(r.TOTAL),
     qtd: toNumber(r.QTD),
+  }));
+}
+
+/** Totais YTD (até a data de hoje) do ano atual e anterior de um representante. */
+export async function getResumoAteData(
+  codvend: number,
+  anoAtual: number,
+  anoAnterior: number
+): Promise<VendaAno[]> {
+  if (useMock()) {
+    await delay(250);
+    return M.mockResumoAteData(codvend, anoAtual, anoAnterior);
+  }
+  const rows = await run(Q.resumoAteData(codvend, anoAtual, anoAnterior));
+  return rows.map((r) => ({
+    ano: toNumber(r.ANO),
+    total: toNumber(r.TOTAL),
+    qtd: toNumber(r.QTD),
+  }));
+}
+
+/** Vendas dia a dia (até a data de hoje) do ano atual e anterior. */
+export async function getVendasPorDia(
+  codvend: number,
+  anoAtual: number,
+  anoAnterior: number
+): Promise<VendaDia[]> {
+  if (useMock()) {
+    await delay(300);
+    return M.mockVendasPorDia(codvend, anoAtual, anoAnterior);
+  }
+  const rows = await run(Q.vendasPorDia(codvend, anoAtual, anoAnterior));
+  return rows.map((r) => ({
+    ano: toNumber(r.ANO),
+    mes: toNumber(r.MES),
+    dia: toNumber(r.DIA),
+    total: toNumber(r.TOTAL),
   }));
 }
 

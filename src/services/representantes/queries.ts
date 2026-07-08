@@ -102,6 +102,75 @@ export function vendasPorAno(codvend: number, meses?: number[]): Query {
   };
 }
 
+/**
+ * Total (VLRPED) acumulado no ano até a data de hoje (mesmo dia/mês), para o
+ * ano atual e o anterior — comparação "justa" YTD (2025 × 2026 até a data do
+ * relatório), evitando comparar ano incompleto com ano inteiro.
+ */
+export function resumoAteData(
+  codvend: number,
+  anoAtual: number,
+  anoAnterior: number
+): Query {
+  return {
+    sql: `
+      SELECT YEAR(CAB.DTMOV) AS ANO,
+             SUM(X.VLRPED) AS TOTAL,
+             COUNT(CAB.NUNOTA) AS QTD
+      FROM TGFCAB CAB
+      ${GER_JOINS_UF}
+      WHERE ${GER_TOPS} AND CAB.CODVEND = ?
+        AND YEAR(CAB.DTMOV) IN (?, ?)
+        AND (
+          MONTH(CAB.DTMOV) < MONTH(GETDATE())
+          OR (MONTH(CAB.DTMOV) = MONTH(GETDATE()) AND DAY(CAB.DTMOV) <= DAY(GETDATE()))
+        )
+      GROUP BY YEAR(CAB.DTMOV)
+      ORDER BY ANO
+    `,
+    params: [
+      { value: codvend, type: "I" },
+      { value: anoAtual, type: "I" },
+      { value: anoAnterior, type: "I" },
+    ],
+  };
+}
+
+/**
+ * Total (VLRPED) por dia, para o ano atual e o anterior, de 1º de janeiro até
+ * a data de hoje (mesmo dia/mês) — visão "dia a dia" (2025 × 2026 até a data do
+ * relatório).
+ */
+export function vendasPorDia(
+  codvend: number,
+  anoAtual: number,
+  anoAnterior: number
+): Query {
+  return {
+    sql: `
+      SELECT YEAR(CAB.DTMOV) AS ANO,
+             MONTH(CAB.DTMOV) AS MES,
+             DAY(CAB.DTMOV) AS DIA,
+             SUM(X.VLRPED) AS TOTAL
+      FROM TGFCAB CAB
+      ${GER_JOINS_UF}
+      WHERE ${GER_TOPS} AND CAB.CODVEND = ?
+        AND YEAR(CAB.DTMOV) IN (?, ?)
+        AND (
+          MONTH(CAB.DTMOV) < MONTH(GETDATE())
+          OR (MONTH(CAB.DTMOV) = MONTH(GETDATE()) AND DAY(CAB.DTMOV) <= DAY(GETDATE()))
+        )
+      GROUP BY YEAR(CAB.DTMOV), MONTH(CAB.DTMOV), DAY(CAB.DTMOV)
+      ORDER BY ANO, MES, DIA
+    `,
+    params: [
+      { value: codvend, type: "I" },
+      { value: anoAtual, type: "I" },
+      { value: anoAnterior, type: "I" },
+    ],
+  };
+}
+
 /** Total por ano e mês, limitado aos últimos N anos (sazonalidade). */
 export function vendasAnoMes(
   codvend: number,

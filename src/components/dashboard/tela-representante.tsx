@@ -2,9 +2,9 @@ import { useMemo, useState } from "react";
 import {
   BarChart3,
   Calculator,
+  CalendarRange,
   CircleDollarSign,
   Receipt,
-  TrendingUp,
   TriangleAlert,
 } from "lucide-react";
 
@@ -19,6 +19,7 @@ import { resumoRepresentante } from "@/services/representantes/analytics";
 import { useVendasRepresentante } from "@/hooks/use-dashboard-data";
 import { formatBRL, formatInt } from "@/lib/format";
 
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -31,12 +32,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DashboardCard } from "./dashboard-card";
 import { CardLoading } from "./card-loading";
 import { KpiCard } from "./kpi-card";
-import { pctShareCell } from "./pct-badge";
+import { PctBadge, pctShareCell } from "./pct-badge";
 import { RepresentanteCombobox } from "./representante-select";
 import { metricaLabel } from "./tipmov-toggle";
 import { TabelaGraficoCard, GraficoCard } from "./panel-cards";
 import type { Coluna } from "./generic-table";
-import { ChartAnoMes, CHART_COLORS } from "./charts";
+import { ChartAnoMes, ChartDiaDia, CHART_COLORS } from "./charts";
 
 const brlCell = (v: unknown) => formatBRL(Number(v));
 const intCell = (v: unknown) => formatInt(Number(v));
@@ -69,6 +70,8 @@ interface TelaRepresentanteProps {
   loadingReps: boolean;
   tipmov: TipMov;
   meses: number[];
+  anoAtual: number;
+  anoAnterior: number;
 }
 
 export function TelaRepresentante({
@@ -76,6 +79,8 @@ export function TelaRepresentante({
   loadingReps,
   tipmov,
   meses,
+  anoAtual,
+  anoAnterior,
 }: TelaRepresentanteProps) {
   const [codvend, setCodvend] = useState<number | null>(null);
   const [anosMes, setAnosMes] = useState(4);
@@ -83,6 +88,8 @@ export function TelaRepresentante({
   const { data, loading, error } = useVendasRepresentante(
     codvend,
     tipmov,
+    anoAtual,
+    anoAnterior,
     anosMes,
     meses
   );
@@ -98,6 +105,15 @@ export function TelaRepresentante({
 
   // Contexto base do drill-down (notas do representante selecionado).
   const baseCtxRep = { tipmov, meses, codvend: codvend ?? undefined };
+
+  // Comparação YTD (2025 × 2026 até a data de hoje) — comparação justa.
+  const ytdAnterior =
+    data?.ateData.find((r) => r.ano === anoAnterior)?.total ?? 0;
+  const ytdAtual = data?.ateData.find((r) => r.ano === anoAtual)?.total ?? 0;
+  const hoje = new Date();
+  const ateLabel = `${String(hoje.getDate()).padStart(2, "0")}/${String(
+    hoje.getMonth() + 1
+  ).padStart(2, "0")}`;
 
   const anoRows = useMemo<AnoRow[]>(() => toAnoRows(data?.ano ?? []), [data]);
   const ufRows = useMemo<UFRow[]>(() => toUFRows(data?.uf ?? []), [data]);
@@ -170,12 +186,12 @@ export function TelaRepresentante({
               icon={<Calculator className="size-4" />}
               loading={carregando}
             />
-            <KpiCard
-              title={resumo?.ultimoAno ? `Total em ${resumo.ultimoAno}` : "Último ano"}
-              value={resumo ? formatBRL(resumo.totalUltimoAno) : ""}
-              delta={resumo?.deltaYoY ?? null}
-              deltaLabel={resumo?.anoAnterior ? `vs ${resumo.anoAnterior}` : undefined}
-              icon={<TrendingUp className="size-4" />}
+            <CardComparativoAno
+              anoAnterior={anoAnterior}
+              anoAtual={anoAtual}
+              totalAnterior={ytdAnterior}
+              totalAtual={ytdAtual}
+              ate={ateLabel}
               loading={carregando}
             />
           </div>
@@ -184,6 +200,7 @@ export function TelaRepresentante({
             <TabsList className="shrink-0 flex-wrap">
               <TabsTrigger value="geral">Visão Geral</TabsTrigger>
               <TabsTrigger value="anomes">Ano × Mês</TabsTrigger>
+              <TabsTrigger value="diadia">Dia × Dia</TabsTrigger>
               <TabsTrigger value="rankings">UF &amp; Rankings</TabsTrigger>
             </TabsList>
 
@@ -223,6 +240,25 @@ export function TelaRepresentante({
                 >
                   {data.anoMes.length ? (
                     <ChartAnoMes data={data.anoMes} />
+                  ) : (
+                    <MsgVazia />
+                  )}
+                </GraficoCard>
+              )}
+            </TabsContent>
+
+            <TabsContent value="diadia" className="flex-1 min-h-0 flex flex-col">
+              {carregando ? (
+                <CardSkeleton title="Dia a dia — acumulado no ano" />
+              ) : (
+                <GraficoCard
+                  title="Dia a dia — acumulado no ano"
+                  subtitle={`Faturamento acumulado de 01/01 até ${ateLabel} · ${anoAnterior} × ${anoAtual}`}
+                  jpgFileName={`dia_a_dia_${repSelecionado?.nome ?? codvend}`}
+                  fill
+                >
+                  {data.dia.length ? (
+                    <ChartDiaDia data={data.dia} />
                   ) : (
                     <MsgVazia />
                   )}
@@ -378,6 +414,62 @@ function CardSkeleton({ title }: { title: string }) {
   return (
     <DashboardCard title={title} fill>
       <CardLoading />
+    </DashboardCard>
+  );
+}
+
+/** Card comparativo YTD: ano anterior × atual, ambos até a data de hoje. */
+function CardComparativoAno({
+  anoAnterior,
+  anoAtual,
+  totalAnterior,
+  totalAtual,
+  ate,
+  loading,
+}: {
+  anoAnterior: number;
+  anoAtual: number;
+  totalAnterior: number;
+  totalAtual: number;
+  ate: string;
+  loading: boolean;
+}) {
+  const delta = totalAnterior ? (totalAtual / totalAnterior - 1) * 100 : null;
+  return (
+    <DashboardCard
+      title={`Faturamento até ${ate}`}
+      action={
+        <span className="text-muted-foreground">
+          <CalendarRange className="size-4" />
+        </span>
+      }
+      innerClassName="flex flex-col justify-center gap-1.5"
+    >
+      {loading ? (
+        <Skeleton className="h-14 w-full" />
+      ) : (
+        <>
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="text-xs font-medium text-muted-foreground">
+              {anoAnterior}
+            </span>
+            <span className="tabular-nums text-muted-foreground">
+              {formatBRL(totalAnterior)}
+            </span>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-semibold text-foreground">
+              {anoAtual}
+            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-lg font-semibold tabular-nums text-foreground">
+                {formatBRL(totalAtual)}
+              </span>
+              <PctBadge value={delta} />
+            </div>
+          </div>
+        </>
+      )}
     </DashboardCard>
   );
 }
