@@ -5,15 +5,10 @@
  */
 export type TipMov = "V" | "P";
 
-/**
- * Representante (vendedor) ativo — cadastro TGFVEN.
- * Representantes com o mesmo nome são mesclados em um único item; `codvend` é o
- * código canônico (menor) e `codvends` lista todos os códigos mesclados.
- */
+/** Representante (vendedor) ativo — cadastro TGFVEN. */
 export interface Representante {
   codvend: number;
   nome: string;
-  codvends: number[];
 }
 
 /** Total faturado/pedido de um representante em um ano. */
@@ -96,8 +91,6 @@ export interface LinhaComparativa {
   ordem?: number;
   /** Posição no ranking por valor (1 = maior). Só UF e Representantes. */
   rk?: number;
-  /** Códigos de vendedor mesclados nesta linha (nomes duplicados). */
-  codvends?: number[];
   vendAnt: number;
   pedAnt: number;
   vendAtu: number;
@@ -144,8 +137,6 @@ export interface DrillContexto {
   mes?: number;
   uf?: string;
   codvend?: number;
-  /** Vários vendedores (representante mesclado). Tem prioridade sobre `codvend`. */
-  codvends?: number[];
   codparc?: number;
   codprod?: number;
   /** Ignora o filtro de anos (usa todo o histórico). */

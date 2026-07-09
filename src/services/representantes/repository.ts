@@ -79,56 +79,27 @@ async function run(
 }
 
 export async function getRepresentantes(): Promise<Representante[]> {
-  let brutos: { codvend: number; nome: string }[];
   if (useMock()) {
     await delay(200);
-    brutos = M.mockRepresentantes();
-  } else {
-    const rows = await run(Q.listRepresentantes());
-    brutos = rows.map((r) => ({
-      codvend: toNumber(r.CODVEND),
-      nome: String(r.NOME ?? "").trim(),
-    }));
+    return M.mockRepresentantes();
   }
-  return mesclarRepresentantes(brutos);
-}
-
-/**
- * Mescla vendedores de mesmo nome (duplicidade de cadastro, ex.: dois "Robson")
- * em um único representante. `codvend` fica com o código canônico (menor) e
- * `codvends` reúne todos os códigos do grupo — consultados juntos nas telas.
- */
-function mesclarRepresentantes(
-  brutos: { codvend: number; nome: string }[]
-): Representante[] {
-  const grupos = new Map<string, { nome: string; codvends: number[] }>();
-  for (const b of brutos) {
-    const nome = b.nome.trim();
-    if (!nome) continue;
-    const chave = nome.toUpperCase();
-    const g = grupos.get(chave) ?? { nome, codvends: [] };
-    if (!g.codvends.includes(b.codvend)) g.codvends.push(b.codvend);
-    grupos.set(chave, g);
-  }
-  return [...grupos.values()]
-    .map((g) => ({
-      codvend: Math.min(...g.codvends),
-      nome: g.nome,
-      codvends: [...g.codvends].sort((a, b) => a - b),
-    }))
-    .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+  const rows = await run(Q.listRepresentantes());
+  return rows.map((r) => ({
+    codvend: toNumber(r.CODVEND),
+    nome: String(r.NOME ?? "").trim(),
+  }));
 }
 
 export async function getVendasAno(
-  codvends: number[],
+  codvend: number,
   tipmov: TipMov,
   meses?: number[]
 ): Promise<VendaAno[]> {
   if (useMock()) {
     await delay(300);
-    return M.mockVendasAno(codvends, tipmov, meses);
+    return M.mockVendasAno(codvend, tipmov, meses);
   }
-  const rows = await run(Q.vendasPorAno(codvends, meses));
+  const rows = await run(Q.vendasPorAno(codvend, meses));
   return rows.map((r) => ({
     ano: toNumber(r.ANO),
     total: toNumber(r.TOTAL),
@@ -138,15 +109,15 @@ export async function getVendasAno(
 
 /** Totais YTD (até a data de hoje) do ano atual e anterior de um representante. */
 export async function getResumoAteData(
-  codvends: number[],
+  codvend: number,
   anoAtual: number,
   anoAnterior: number
 ): Promise<VendaAno[]> {
   if (useMock()) {
     await delay(250);
-    return M.mockResumoAteData(codvends, anoAtual, anoAnterior);
+    return M.mockResumoAteData(codvend, anoAtual, anoAnterior);
   }
-  const rows = await run(Q.resumoAteData(codvends, anoAtual, anoAnterior));
+  const rows = await run(Q.resumoAteData(codvend, anoAtual, anoAnterior));
   return rows.map((r) => ({
     ano: toNumber(r.ANO),
     total: toNumber(r.TOTAL),
@@ -156,15 +127,15 @@ export async function getResumoAteData(
 
 /** Vendas dia a dia (até a data de hoje) do ano atual e anterior. */
 export async function getVendasPorDia(
-  codvends: number[],
+  codvend: number,
   anoAtual: number,
   anoAnterior: number
 ): Promise<VendaDia[]> {
   if (useMock()) {
     await delay(300);
-    return M.mockVendasPorDia(codvends, anoAtual, anoAnterior);
+    return M.mockVendasPorDia(codvend, anoAtual, anoAnterior);
   }
-  const rows = await run(Q.vendasPorDia(codvends, anoAtual, anoAnterior));
+  const rows = await run(Q.vendasPorDia(codvend, anoAtual, anoAnterior));
   return rows.map((r) => ({
     ano: toNumber(r.ANO),
     mes: toNumber(r.MES),
@@ -174,16 +145,16 @@ export async function getVendasPorDia(
 }
 
 export async function getVendasAnoMes(
-  codvends: number[],
+  codvend: number,
   tipmov: TipMov,
   anos = 4,
   meses?: number[]
 ): Promise<VendaAnoMes[]> {
   if (useMock()) {
     await delay(300);
-    return M.mockVendasAnoMes(codvends, tipmov, anos, meses);
+    return M.mockVendasAnoMes(codvend, tipmov, anos, meses);
   }
-  const rows = await run(Q.vendasAnoMes(codvends, anos, meses));
+  const rows = await run(Q.vendasAnoMes(codvend, anos, meses));
   return rows.map((r) => ({
     ano: toNumber(r.ANO),
     mes: toNumber(r.MES),
@@ -193,15 +164,15 @@ export async function getVendasAnoMes(
 }
 
 export async function getVendasUF(
-  codvends: number[],
+  codvend: number,
   tipmov: TipMov,
   meses?: number[]
 ): Promise<VendaUF[]> {
   if (useMock()) {
     await delay(300);
-    return M.mockVendasUF(codvends, tipmov, meses);
+    return M.mockVendasUF(codvend, tipmov, meses);
   }
-  const rows = await run(Q.vendasPorUF(codvends, meses));
+  const rows = await run(Q.vendasPorUF(codvend, meses));
   return rows.map((r) => ({
     uf: String(r.UF ?? "").trim(),
     total: toNumber(r.TOTAL),
@@ -210,30 +181,30 @@ export async function getVendasUF(
 }
 
 export async function getTopClientes(
-  codvends: number[],
+  codvend: number,
   tipmov: TipMov,
   limite = 10,
   meses?: number[]
 ): Promise<TopItem[]> {
   if (useMock()) {
     await delay(300);
-    return M.mockTopClientes(codvends, tipmov, limite, meses);
+    return M.mockTopClientes(codvend, tipmov, limite, meses);
   }
-  const rows = await run(Q.topClientes(codvends, limite, meses));
+  const rows = await run(Q.topClientes(codvend, limite, meses));
   return rows.map(mapTopItem);
 }
 
 export async function getTopProdutos(
-  codvends: number[],
+  codvend: number,
   tipmov: TipMov,
   limite = 10,
   meses?: number[]
 ): Promise<TopItem[]> {
   if (useMock()) {
     await delay(300);
-    return M.mockTopProdutos(codvends, tipmov, limite, meses);
+    return M.mockTopProdutos(codvend, tipmov, limite, meses);
   }
-  const rows = await run(Q.topProdutos(codvends, limite, meses));
+  const rows = await run(Q.topProdutos(codvend, limite, meses));
   return rows.map(mapTopItem);
 }
 
@@ -318,40 +289,6 @@ function comRanking(linhas: LinhaComparativa[]): LinhaComparativa[] {
   return linhas.map((l, i) => ({ ...l, rk: i + 1 }));
 }
 
-/**
- * Mescla linhas de mesmo rótulo (nomes de representante duplicados, ex.: dois
- * "Robson"), somando os valores e reunindo os códigos em `codvends`. Reordena
- * por vendas do ano atual.
- */
-function mesclarComparativaPorNome(
-  linhas: LinhaComparativa[]
-): LinhaComparativa[] {
-  const grupos = new Map<string, LinhaComparativa>();
-  for (const l of linhas) {
-    const chave = l.rotulo.trim().toUpperCase();
-    const g = grupos.get(chave);
-    if (!g) {
-      grupos.set(chave, {
-        ...l,
-        codvends: l.codigo != null ? [l.codigo] : [],
-      });
-    } else {
-      g.vendAnt += l.vendAnt;
-      g.pedAnt += l.pedAnt;
-      g.vendAtu += l.vendAtu;
-      g.pedAtu += l.pedAtu;
-      if (l.codigo != null) g.codvends = [...(g.codvends ?? []), l.codigo];
-    }
-  }
-  return [...grupos.values()]
-    .map((g) => ({
-      ...g,
-      pctVend: pct(g.vendAtu, g.vendAnt),
-      pctPed: pct(g.pedAtu, g.pedAnt),
-    }))
-    .sort((a, b) => b.vendAtu - a.vendAtu);
-}
-
 export async function getComparativoUF(
   anoAtual: number,
   anoAnterior: number,
@@ -372,22 +309,20 @@ export async function getComparativoRepresentantesGerencial(
   anoAnterior: number,
   meses?: number[]
 ): Promise<LinhaComparativa[]> {
-  let linhas: LinhaComparativa[];
   if (useMock()) {
     await delay(250);
-    linhas = M.mockComparativoRepresentantes(anoAtual, anoAnterior, meses);
-  } else {
-    const rows = await run(
-      Q.comparativoRepresentantesGerencial(anoAtual, anoAnterior, meses)
-    );
-    linhas = rows.map((r) =>
+    return M.mockComparativoRepresentantes(anoAtual, anoAnterior, meses);
+  }
+  const rows = await run(
+    Q.comparativoRepresentantesGerencial(anoAtual, anoAnterior, meses)
+  );
+  return comRanking(
+    rows.map((r) =>
       mapComparativa(r, String(r.ROTULO ?? "").trim(), {
         codigo: toNumber(r.CODIGO),
       })
-    );
-  }
-  // Nomes duplicados (ex.: dois "Robson") viram uma linha só.
-  return comRanking(mesclarComparativaPorNome(linhas));
+    )
+  );
 }
 
 export async function getComparativoMensal(
