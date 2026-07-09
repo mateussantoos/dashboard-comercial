@@ -6,7 +6,11 @@ import {
   TrendingUp,
 } from "lucide-react";
 
-import type { Representante, TipMov } from "@/services/representantes/types";
+import type {
+  ComparativoPonto,
+  Representante,
+  TipMov,
+} from "@/services/representantes/types";
 import { useComparativo } from "@/hooks/use-dashboard-data";
 import { formatBRL, formatInt } from "@/lib/format";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -40,8 +44,41 @@ export function TelaComparar({
   anoAnterior,
 }: TelaCompararProps) {
   const [selecionados, setSelecionados] = useState<number[]>([]);
-  const { data, loading } = useComparativo(selecionados, tipmov);
   const metrica = metricaLabel(tipmov);
+
+  // Mapa: código real de vendedor → código canônico (representante mesclado).
+  const canonicalDe = useMemo(() => {
+    const m = new Map<number, number>();
+    for (const r of representantes) {
+      for (const cv of r.codvends) m.set(cv, r.codvend);
+    }
+    return m;
+  }, [representantes]);
+
+  // Expande os selecionados (canônicos) para todos os códigos reais a consultar.
+  const codvendsConsulta = useMemo(() => {
+    const set = new Set<number>();
+    for (const cv of selecionados) {
+      const rep = representantes.find((r) => r.codvend === cv);
+      for (const c of rep?.codvends ?? [cv]) set.add(c);
+    }
+    return [...set];
+  }, [selecionados, representantes]);
+
+  const { data: dataBruta, loading } = useComparativo(codvendsConsulta, tipmov);
+
+  // Reagrupa os pontos por código canônico (soma nomes duplicados).
+  const data = useMemo<ComparativoPonto[]>(() => {
+    const mapa = new Map<string, ComparativoPonto>();
+    for (const p of dataBruta) {
+      const canon = canonicalDe.get(p.codvend) ?? p.codvend;
+      const chave = `${canon}-${p.ano}`;
+      const cur = mapa.get(chave) ?? { codvend: canon, ano: p.ano, total: 0 };
+      cur.total += p.total;
+      mapa.set(chave, cur);
+    }
+    return [...mapa.values()];
+  }, [dataBruta, canonicalDe]);
 
   const nomeDe = (cv: number) =>
     representantes.find((r) => r.codvend === cv)?.nome ?? `#${cv}`;

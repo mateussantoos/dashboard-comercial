@@ -24,6 +24,18 @@ function filtroMeses(meses?: number[], coluna = "CAB.DTNEG"): string {
   return `AND MONTH(${coluna}) IN (${lista.join(", ")})`;
 }
 
+/**
+ * Lista de inteiros validados para uma cláusula `IN (...)` (ex.: códigos de
+ * vendedor de um representante mesclado). Interpola com segurança; se vazia,
+ * retorna `-1` (nenhuma linha).
+ */
+function inLista(nums: number[]): string {
+  const lista = nums
+    .map((n) => Math.trunc(Number(n)))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  return lista.length ? lista.join(", ") : "-1";
+}
+
 // --- Base de cálculo da Visão Gerencial (espelha o BI antigo) ---
 // O relatório antigo somava VLRPED (valor do pedido, com multiplicador por
 // tabela de preço) filtrando por CODTIPOPER e DTMOV. Reproduzimos a mesma
@@ -85,7 +97,7 @@ export function listRepresentantes(): Query {
 // entre as telas.
 
 /** Total (VLRPED) por ano do representante (gráfico anual). */
-export function vendasPorAno(codvend: number, meses?: number[]): Query {
+export function vendasPorAno(codvends: number[], meses?: number[]): Query {
   return {
     sql: `
       SELECT YEAR(CAB.DTMOV) AS ANO,
@@ -93,12 +105,12 @@ export function vendasPorAno(codvend: number, meses?: number[]): Query {
              COUNT(CAB.NUNOTA) AS QTD
       FROM TGFCAB CAB
       ${GER_JOINS_UF}
-      WHERE ${GER_TOPS} AND CAB.CODVEND = ?
+      WHERE ${GER_TOPS} AND CAB.CODVEND IN (${inLista(codvends)})
         ${filtroMeses(meses, "CAB.DTMOV")}
       GROUP BY YEAR(CAB.DTMOV)
       ORDER BY ANO
     `,
-    params: [{ value: codvend, type: "I" }],
+    params: [],
   };
 }
 
@@ -108,7 +120,7 @@ export function vendasPorAno(codvend: number, meses?: number[]): Query {
  * relatório), evitando comparar ano incompleto com ano inteiro.
  */
 export function resumoAteData(
-  codvend: number,
+  codvends: number[],
   anoAtual: number,
   anoAnterior: number
 ): Query {
@@ -119,7 +131,7 @@ export function resumoAteData(
              COUNT(CAB.NUNOTA) AS QTD
       FROM TGFCAB CAB
       ${GER_JOINS_UF}
-      WHERE ${GER_TOPS} AND CAB.CODVEND = ?
+      WHERE ${GER_TOPS} AND CAB.CODVEND IN (${inLista(codvends)})
         AND YEAR(CAB.DTMOV) IN (?, ?)
         AND (
           MONTH(CAB.DTMOV) < MONTH(GETDATE())
@@ -129,7 +141,6 @@ export function resumoAteData(
       ORDER BY ANO
     `,
     params: [
-      { value: codvend, type: "I" },
       { value: anoAtual, type: "I" },
       { value: anoAnterior, type: "I" },
     ],
@@ -142,7 +153,7 @@ export function resumoAteData(
  * relatório).
  */
 export function vendasPorDia(
-  codvend: number,
+  codvends: number[],
   anoAtual: number,
   anoAnterior: number
 ): Query {
@@ -154,7 +165,7 @@ export function vendasPorDia(
              SUM(X.VLRPED) AS TOTAL
       FROM TGFCAB CAB
       ${GER_JOINS_UF}
-      WHERE ${GER_TOPS} AND CAB.CODVEND = ?
+      WHERE ${GER_TOPS} AND CAB.CODVEND IN (${inLista(codvends)})
         AND YEAR(CAB.DTMOV) IN (?, ?)
         AND (
           MONTH(CAB.DTMOV) < MONTH(GETDATE())
@@ -164,7 +175,6 @@ export function vendasPorDia(
       ORDER BY ANO, MES, DIA
     `,
     params: [
-      { value: codvend, type: "I" },
       { value: anoAtual, type: "I" },
       { value: anoAnterior, type: "I" },
     ],
@@ -173,7 +183,7 @@ export function vendasPorDia(
 
 /** Total por ano e mês, limitado aos últimos N anos (sazonalidade). */
 export function vendasAnoMes(
-  codvend: number,
+  codvends: number[],
   anos = 4,
   meses?: number[]
 ): Query {
@@ -185,21 +195,18 @@ export function vendasAnoMes(
              COUNT(CAB.NUNOTA) AS QTD
       FROM TGFCAB CAB
       ${GER_JOINS_UF}
-      WHERE ${GER_TOPS} AND CAB.CODVEND = ?
+      WHERE ${GER_TOPS} AND CAB.CODVEND IN (${inLista(codvends)})
         AND CAB.DTMOV >= DATEADD(YEAR, ?, GETDATE())
         ${filtroMeses(meses, "CAB.DTMOV")}
       GROUP BY YEAR(CAB.DTMOV), MONTH(CAB.DTMOV)
       ORDER BY ANO, MES
     `,
-    params: [
-      { value: codvend, type: "I" },
-      { value: -Math.abs(anos), type: "I" },
-    ],
+    params: [{ value: -Math.abs(anos), type: "I" }],
   };
 }
 
 /** Total por UF (estado) do representante. */
-export function vendasPorUF(codvend: number, meses?: number[]): Query {
+export function vendasPorUF(codvends: number[], meses?: number[]): Query {
   return {
     sql: `
       SELECT EST.UF AS UF,
@@ -207,18 +214,18 @@ export function vendasPorUF(codvend: number, meses?: number[]): Query {
              COUNT(CAB.NUNOTA) AS QTD
       FROM TGFCAB CAB
       ${GER_JOINS_UF}
-      WHERE ${GER_TOPS} AND CAB.CODVEND = ?
+      WHERE ${GER_TOPS} AND CAB.CODVEND IN (${inLista(codvends)})
         ${filtroMeses(meses, "CAB.DTMOV")}
       GROUP BY EST.UF
       ORDER BY TOTAL DESC
     `,
-    params: [{ value: codvend, type: "I" }],
+    params: [],
   };
 }
 
 /** Ranking de clientes do representante (por valor). */
 export function topClientes(
-  codvend: number,
+  codvends: number[],
   limite = 10,
   meses?: number[]
 ): Query {
@@ -232,12 +239,12 @@ export function topClientes(
              COUNT(CAB.NUNOTA) AS QTD
       FROM TGFCAB CAB
       ${GER_JOINS_UF}
-      WHERE ${GER_TOPS} AND CAB.CODVEND = ?
+      WHERE ${GER_TOPS} AND CAB.CODVEND IN (${inLista(codvends)})
         ${filtroMeses(meses, "CAB.DTMOV")}
       GROUP BY PAR.CODPARC, PAR.NOMEPARC
       ORDER BY TOTAL DESC
     `,
-    params: [{ value: codvend, type: "I" }],
+    params: [],
   };
 }
 
@@ -247,7 +254,7 @@ export function topClientes(
  * do multiplicador por tabela de preço, que é por nota e não por produto.
  */
 export function topProdutos(
-  codvend: number,
+  codvends: number[],
   limite = 10,
   meses?: number[]
 ): Query {
@@ -265,12 +272,12 @@ export function topProdutos(
       INNER JOIN TGFPAR PAR ON PAR.CODPARC = CAB.CODPARC
       INNER JOIN TSICID CID ON CID.CODCID = PAR.CODCID
       INNER JOIN TSIUFS EST ON EST.CODUF = CID.UF
-      WHERE ${GER_TOPS} AND CAB.CODVEND = ?
+      WHERE ${GER_TOPS} AND CAB.CODVEND IN (${inLista(codvends)})
         ${filtroMeses(meses, "CAB.DTMOV")}
       GROUP BY PRO.CODPROD, PRO.DESCRPROD
       ORDER BY TOTAL DESC
     `,
-    params: [{ value: codvend, type: "I" }],
+    params: [],
   };
 }
 
@@ -488,7 +495,9 @@ export function registrosDetalhe(
     where += " AND EST.UF = ?";
     params.push({ value: ctx.uf, type: "S" });
   }
-  if (ctx.codvend != null) {
+  if (ctx.codvends && ctx.codvends.length) {
+    where += ` AND CAB.CODVEND IN (${inLista(ctx.codvends)})`;
+  } else if (ctx.codvend != null) {
     where += " AND CAB.CODVEND = ?";
     params.push({ value: ctx.codvend, type: "I" });
   }

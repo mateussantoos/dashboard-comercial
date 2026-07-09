@@ -70,7 +70,7 @@ export interface VendasRepresentante {
 
 /** Todos os conjuntos de dados de um representante para o dashboard. */
 export function useVendasRepresentante(
-  codvend: number | null,
+  codvends: number[] | null,
   tipmov: TipMov,
   anoAtual: number,
   anoAnterior: number,
@@ -81,9 +81,10 @@ export function useVendasRepresentante(
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const chaveMeses = meses.join(",");
+  const chaveCodvends = codvends?.join(",") ?? "";
 
   useEffect(() => {
-    if (codvend == null) {
+    if (!codvends || !codvends.length) {
       setData(null);
       setError(null);
       return;
@@ -94,13 +95,13 @@ export function useVendasRepresentante(
     setError(null);
 
     Promise.all([
-      getVendasAno(codvend, tipmov, meses),
-      getVendasAnoMes(codvend, tipmov, anos, meses),
-      getVendasUF(codvend, tipmov, meses),
-      getTopClientes(codvend, tipmov, 10, meses),
-      getTopProdutos(codvend, tipmov, 10, meses),
-      getResumoAteData(codvend, anoAtual, anoAnterior),
-      getVendasPorDia(codvend, anoAtual, anoAnterior),
+      getVendasAno(codvends, tipmov, meses),
+      getVendasAnoMes(codvends, tipmov, anos, meses),
+      getVendasUF(codvends, tipmov, meses),
+      getTopClientes(codvends, tipmov, 10, meses),
+      getTopProdutos(codvends, tipmov, 10, meses),
+      getResumoAteData(codvends, anoAtual, anoAnterior),
+      getVendasPorDia(codvends, anoAtual, anoAnterior),
     ])
       .then(([ano, anoMes, uf, topClientes, topProdutos, ateData, dia]) => {
         if (cancelado) return;
@@ -117,7 +118,7 @@ export function useVendasRepresentante(
       cancelado = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [codvend, tipmov, anoAtual, anoAnterior, anos, chaveMeses]);
+  }, [chaveCodvends, tipmov, anoAtual, anoAnterior, anos, chaveMeses]);
 
   return { data, loading, error };
 }

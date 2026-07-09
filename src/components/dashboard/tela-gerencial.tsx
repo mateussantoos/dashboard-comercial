@@ -251,7 +251,7 @@ export function TelaGerencial({
             storageKey="ger_representantes"
             montarDetalhe={(r) => ({
               titulo: r.rotulo,
-              ctx: { ...baseCtx, codvend: r.codigo },
+              ctx: { ...baseCtx, codvend: r.codigo, codvends: r.codvends },
             })}
             fill
           />

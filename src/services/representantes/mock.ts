@@ -4,7 +4,6 @@ import type {
   LinhaComparativa,
   PeriodoSnapshot,
   RegistroDetalhe,
-  Representante,
   SnapshotAno,
   TipMov,
   TopItem,
@@ -13,6 +12,12 @@ import type {
   VendaDia,
   VendaUF,
 } from "./types";
+
+/** Vendedor "cru" do mock (antes da mescla por nome no repositório). */
+interface VendedorMock {
+  codvend: number;
+  nome: string;
+}
 
 /**
  * Dados fictícios determinísticos para desenvolvimento fora do Sankhya
@@ -35,7 +40,7 @@ function rng(seed: number) {
   };
 }
 
-export const MOCK_REPRESENTANTES: Representante[] = [
+export const MOCK_REPRESENTANTES: VendedorMock[] = [
   { codvend: 101, nome: "Ana Beatriz Ramos" },
   { codvend: 102, nome: "Carlos Eduardo Lima" },
   { codvend: 103, nome: "Fernanda Souza" },
@@ -44,6 +49,9 @@ export const MOCK_REPRESENTANTES: Representante[] = [
   { codvend: 106, nome: "Marcelo Tavares" },
   { codvend: 107, nome: "Patrícia Nogueira" },
   { codvend: 108, nome: "Rodrigo Alencar" },
+  // Duplicidade de cadastro (mesmo nome, dois códigos) — mesclada no repositório.
+  { codvend: 109, nome: "Robson Andrade" },
+  { codvend: 110, nome: "Robson Andrade" },
 ];
 
 const UFS = ["SP", "MG", "RJ", "PR", "RS", "SC", "BA", "GO", "PE", "CE"];
@@ -124,8 +132,32 @@ function historicoMensal(codvend: number, tipmov: TipMov): VendaAnoMes[] {
   return linhas;
 }
 
-export function mockRepresentantes(): Representante[] {
+export function mockRepresentantes(): VendedorMock[] {
   return [...MOCK_REPRESENTANTES];
+}
+
+/** Histórico mensal somado de vários vendedores (representante mesclado). */
+function historicoMensalMulti(
+  codvends: number[],
+  tipmov: TipMov
+): VendaAnoMes[] {
+  const mapa = new Map<string, VendaAnoMes>();
+  for (const cv of codvends) {
+    for (const l of historicoMensal(cv, tipmov)) {
+      const chave = `${l.ano}-${l.mes}`;
+      const atual =
+        mapa.get(chave) ?? { ano: l.ano, mes: l.mes, total: 0, qtd: 0 };
+      atual.total += l.total;
+      atual.qtd += l.qtd;
+      mapa.set(chave, atual);
+    }
+  }
+  return [...mapa.values()];
+}
+
+/** Semente estável para um representante (mesclado ou não). */
+function seedDe(codvends: number[]): number {
+  return codvends.reduce((s, c) => s + c, 0) || 1;
 }
 
 /**
@@ -140,12 +172,12 @@ function incluiMes(meses: number[] | undefined, mes: number): boolean {
 }
 
 export function mockVendasAnoMes(
-  codvend: number,
+  codvends: number[],
   tipmov: TipMov,
   anos = 4,
   meses?: number[]
 ): VendaAnoMes[] {
-  const hist = historicoMensal(codvend, tipmov);
+  const hist = historicoMensalMulti(codvends, tipmov);
   const anoAtual = now().getFullYear();
   const corte = anoAtual - Math.abs(anos) + 1;
   return hist.filter((l) => l.ano >= corte && incluiMes(meses, l.mes));
@@ -153,11 +185,11 @@ export function mockVendasAnoMes(
 
 /** YTD (até a data de hoje) do ano atual e anterior — comparação justa. */
 export function mockResumoAteData(
-  codvend: number,
+  codvends: number[],
   anoAtual: number,
   anoAnterior: number
 ): VendaAno[] {
-  const hist = historicoMensal(codvend, "V");
+  const hist = historicoMensalMulti(codvends, "V");
   const hoje = now();
   const mesAtual = hoje.getMonth() + 1;
   const diaAtual = hoje.getDate();
@@ -188,15 +220,15 @@ export function mockResumoAteData(
  * total mensal do mock pelos dias com ruído determinístico.
  */
 export function mockVendasPorDia(
-  codvend: number,
+  codvends: number[],
   anoAtual: number,
   anoAnterior: number
 ): VendaDia[] {
-  const hist = historicoMensal(codvend, "V");
+  const hist = historicoMensalMulti(codvends, "V");
   const hoje = now();
   const mesAtual = hoje.getMonth() + 1;
   const diaAtual = hoje.getDate();
-  const rand = rng(codvend * 60013);
+  const rand = rng(seedDe(codvends) * 60013);
   const linhas: VendaDia[] = [];
 
   for (const ano of [anoAnterior, anoAtual]) {
@@ -227,11 +259,11 @@ export function mockVendasPorDia(
 }
 
 export function mockVendasAno(
-  codvend: number,
+  codvends: number[],
   tipmov: TipMov,
   meses?: number[]
 ): VendaAno[] {
-  const hist = historicoMensal(codvend, tipmov).filter((l) =>
+  const hist = historicoMensalMulti(codvends, tipmov).filter((l) =>
     incluiMes(meses, l.mes)
   );
   const porAno = new Map<number, VendaAno>();
@@ -247,22 +279,22 @@ export function mockVendasAno(
 }
 
 function totalHistorico(
-  codvend: number,
+  codvends: number[],
   tipmov: TipMov,
   meses?: number[]
 ): number {
-  return historicoMensal(codvend, tipmov)
+  return historicoMensalMulti(codvends, tipmov)
     .filter((l) => incluiMes(meses, l.mes))
     .reduce((s, l) => s + l.total, 0);
 }
 
 export function mockVendasUF(
-  codvend: number,
+  codvends: number[],
   tipmov: TipMov,
   meses?: number[]
 ): VendaUF[] {
-  const rand = rng(codvend * 104729);
-  const total = totalHistorico(codvend, tipmov, meses);
+  const rand = rng(seedDe(codvends) * 104729);
+  const total = totalHistorico(codvends, tipmov, meses);
 
   // Cada representante atua em um subconjunto de UFs com pesos aleatórios.
   const qtdUfs = 4 + Math.floor(rand() * 4);
@@ -287,7 +319,7 @@ export function mockVendasUF(
 }
 
 function ranking(
-  codvend: number,
+  codvends: number[],
   tipmov: TipMov,
   nomes: string[],
   seedSalt: number,
@@ -295,8 +327,8 @@ function ranking(
   limite: number,
   meses?: number[]
 ): TopItem[] {
-  const rand = rng(codvend * 31 + seedSalt);
-  const total = totalHistorico(codvend, tipmov, meses);
+  const rand = rng(seedDe(codvends) * 31 + seedSalt);
+  const total = totalHistorico(codvends, tipmov, meses);
 
   const itens = nomes
     .map((nome, i) => ({ nome, codigo: 1000 + i, peso: 0.3 + rand() }))
@@ -317,21 +349,21 @@ function ranking(
 }
 
 export function mockTopClientes(
-  codvend: number,
+  codvends: number[],
   tipmov: TipMov,
   limite = 10,
   meses?: number[]
 ): TopItem[] {
-  return ranking(codvend, tipmov, CLIENTES, 3, 2200, limite, meses);
+  return ranking(codvends, tipmov, CLIENTES, 3, 2200, limite, meses);
 }
 
 export function mockTopProdutos(
-  codvend: number,
+  codvends: number[],
   tipmov: TipMov,
   limite = 10,
   meses?: number[]
 ): TopItem[] {
-  return ranking(codvend, tipmov, PRODUTOS, 97, 45, limite, meses);
+  return ranking(codvends, tipmov, PRODUTOS, 97, 45, limite, meses);
 }
 
 export function mockComparativo(
@@ -340,7 +372,7 @@ export function mockComparativo(
 ): ComparativoPonto[] {
   const pontos: ComparativoPonto[] = [];
   for (const codvend of codvends) {
-    for (const va of mockVendasAno(codvend, tipmov)) {
+    for (const va of mockVendasAno([codvend], tipmov)) {
       pontos.push({ codvend, ano: va.ano, total: va.total });
     }
   }
@@ -481,7 +513,7 @@ export function mockComparativoRepresentantes(
   meses?: number[]
 ): LinhaComparativa[] {
   return MOCK_REPRESENTANTES.map((rep) => {
-    const anos = mockVendasAno(rep.codvend, "V", meses);
+    const anos = mockVendasAno([rep.codvend], "V", meses);
     const atu = anos.find((a) => a.ano === anoAtual);
     const ant = anos.find((a) => a.ano === anoAnterior);
     const vendAtu = atu?.total ?? 0;
@@ -560,6 +592,7 @@ function hashCtx(ctx: DrillContexto): number {
     ctx.mes ?? "",
     ctx.uf ?? "",
     ctx.codvend ?? "",
+    (ctx.codvends ?? []).join(","),
     ctx.codparc ?? "",
     ctx.codprod ?? "",
     ctx.todosAnos ? "T" : "",
@@ -611,7 +644,8 @@ export function mockRegistrosDetalhe(ctx: DrillContexto): RegistroDetalhe[] {
 
   // Campo auxiliar: UF quando o recorte já é por vendedor; senão o vendedor.
   const vendedores = MOCK_REPRESENTANTES.map((r) => r.nome);
-  const mostrarUf = ctx.codvend != null || ctx.uf != null;
+  const mostrarUf =
+    ctx.codvend != null || !!ctx.codvends?.length || ctx.uf != null;
 
   const n = 24 + Math.floor(rand() * 60);
   const registros: RegistroDetalhe[] = [];

@@ -85,8 +85,13 @@ export function TelaRepresentante({
   const [codvend, setCodvend] = useState<number | null>(null);
   const [anosMes, setAnosMes] = useState(4);
 
+  const repSelecionado = representantes.find((r) => r.codvend === codvend);
+  // Representante pode agrupar vários códigos (nomes duplicados mesclados).
+  const codvends =
+    repSelecionado?.codvends ?? (codvend != null ? [codvend] : null);
+
   const { data, loading, error } = useVendasRepresentante(
-    codvend,
+    codvends,
     tipmov,
     anoAtual,
     anoAnterior,
@@ -96,7 +101,6 @@ export function TelaRepresentante({
 
   const metrica = metricaLabel(tipmov);
   const notasLabel = tipmov === "P" ? "pedidos" : "notas";
-  const repSelecionado = representantes.find((r) => r.codvend === codvend);
   const resumo = useMemo(
     () => (data ? resumoRepresentante(data.ano) : null),
     [data]
@@ -104,7 +108,7 @@ export function TelaRepresentante({
   const carregando = loading || !data;
 
   // Contexto base do drill-down (notas do representante selecionado).
-  const baseCtxRep = { tipmov, meses, codvend: codvend ?? undefined };
+  const baseCtxRep = { tipmov, meses, codvends: codvends ?? undefined };
 
   // Comparação YTD (2025 × 2026 até a data de hoje) — comparação justa.
   const ytdAnterior =
